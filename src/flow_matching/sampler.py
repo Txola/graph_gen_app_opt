@@ -44,7 +44,7 @@ class QM9CondSampler:
         super().__init__()
         self.cfg = cfg
         self.omega = omega
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.device = next(model.parameters()).device
         self.node_dist = qm9_dataset_infos.nodes_dist
 
         self.extra_features = extra_features
