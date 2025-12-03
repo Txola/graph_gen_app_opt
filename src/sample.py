@@ -1,6 +1,8 @@
 import time
 
 import hydra
+import torch
+from flow_matching.sampler import load_transformer_model
 from flow_matching.sampler import QM9CondSampler
 from metrics.molecular_metrics import compute_validity
 from metrics.qm9_info import QM9Infos
@@ -16,6 +18,9 @@ def main(cfg: DictConfig):
     RDLogger.DisableLog("rdApp.*")
 
     qm9_infos = QM9Infos()
+    model = load_transformer_model(
+        cfg, qm9_infos, "cuda" if torch.cuda.is_available() else "cpu"
+    )
 
     extra_features = ExtraFeatures(
         cfg.model.extra_features,
@@ -28,6 +33,7 @@ def main(cfg: DictConfig):
         qm9_dataset_infos=qm9_infos,
         extra_features=extra_features,
         domain_features=domain_features,
+        model=model,
         eta=0,
         omega=1,
         distortion="polydec",

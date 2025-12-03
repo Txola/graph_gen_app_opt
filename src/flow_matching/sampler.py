@@ -11,6 +11,24 @@ from models.transformer_model import GraphTransformer
 from tqdm import tqdm
 
 
+def load_transformer_model(cfg, qm9_dataset_infos, device):
+    model = GraphTransformer(
+        n_layers=cfg.model.n_layers,
+        input_dims=qm9_dataset_infos.input_dims,
+        hidden_mlp_dims=cfg.model.hidden_mlp_dims,
+        hidden_dims=cfg.model.hidden_dims,
+        output_dims=qm9_dataset_infos.output_dims,
+        act_fn_in=nn.ReLU(),
+        act_fn_out=nn.ReLU(),
+    )
+
+    state = torch.load(cfg.model.checkpoint_path, map_location="cpu", weights_only=True)
+    model.load_state_dict(state, strict=True)
+    model.to(device)
+    model.eval()
+    return model
+
+
 class QM9CondSampler:
     def __init__(
         self,
@@ -18,6 +36,7 @@ class QM9CondSampler:
         qm9_dataset_infos,
         extra_features,
         domain_features,
+        model,
         eta,
         omega,
         distortion,
@@ -26,8 +45,6 @@ class QM9CondSampler:
         self.cfg = cfg
         self.omega = omega
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.input_dims = qm9_dataset_infos.input_dims
-        self.output_dims = qm9_dataset_infos.output_dims
         self.node_dist = qm9_dataset_infos.nodes_dist
 
         self.extra_features = extra_features
@@ -36,25 +53,10 @@ class QM9CondSampler:
         self.noise_dist = NoiseDistribution(cfg.model.transition, qm9_dataset_infos)
         self.limit_dist = self.noise_dist.get_limit_dist()
 
-        self.noise_dist.update_input_output_dims(self.input_dims)
+        self.noise_dist.update_input_output_dims(qm9_dataset_infos.input_dims)
         self.noise_dist.update_dataset_infos(qm9_dataset_infos)
 
-        self.model = GraphTransformer(
-            n_layers=cfg.model.n_layers,
-            input_dims=self.input_dims,
-            hidden_mlp_dims=cfg.model.hidden_mlp_dims,
-            hidden_dims=cfg.model.hidden_dims,
-            output_dims=self.output_dims,
-            act_fn_in=nn.ReLU(),
-            act_fn_out=nn.ReLU(),
-        )
-        self.model.load_state_dict(
-            torch.load(
-                cfg.model.checkpoint_path, map_location="cpu", weights_only=True
-            ),
-            strict=True,
-        )
-        self.model.to(self.device)
+        self.model = model
 
         self.time_distorter = TimeDistorter(
             sample_distortion=distortion,
