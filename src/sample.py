@@ -7,11 +7,13 @@ from metrics.qm9_info import QM9Infos
 from models.extra_features import ExtraFeatures
 from models.extra_features import ExtraMolecularFeatures
 from omegaconf import DictConfig
+from rdkit import RDLogger
 
 
 @hydra.main(version_base="1.3", config_path="../configs", config_name="config")
 def main(cfg: DictConfig):
     print(cfg)
+    RDLogger.DisableLog("rdApp.*")
 
     qm9_infos = QM9Infos()
 

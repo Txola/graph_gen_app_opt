@@ -1,7 +1,6 @@
 import numpy as np
 import torch
 from rdkit import Chem
-from tqdm import tqdm
 
 ATOM_DECODER = ["H", "C", "N", "O", "F"]
 BOND_DICT = [
@@ -44,7 +43,7 @@ def compute_validity(generated):
     valid_list = []
     num_components = []
 
-    for atom_types, edge_types in tqdm(generated, desc="Validity check"):
+    for atom_types, edge_types in generated:
         mol = build_molecule(atom_types, edge_types, ATOM_DECODER)
 
         try:
