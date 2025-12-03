@@ -8,7 +8,6 @@ from flow_matching.rate_matrix import RateMatrixDesigner
 from flow_matching.time_distorter import TimeDistorter
 from metrics.molecular_metrics import compute_validity
 from models.transformer_model import GraphTransformer
-from tqdm import tqdm
 
 
 def load_transformer_model(cfg, qm9_dataset_infos, device):
@@ -41,7 +40,6 @@ class QM9CondSampler:
         omega,
         distortion,
     ):
-        super().__init__()
         self.cfg = cfg
         self.omega = omega
         self.device = next(model.parameters()).device
@@ -70,6 +68,9 @@ class QM9CondSampler:
             limit_dist=self.limit_dist,
         )
 
+        self.initialized = False
+        self.finished = False
+
     def forward(self, noisy_data, extra_data, node_mask):
         X = torch.cat((noisy_data["X_t"], extra_data.X), dim=2).float()
         E = torch.cat((noisy_data["E_t"], extra_data.E), dim=3).float()
@@ -77,98 +78,146 @@ class QM9CondSampler:
         return self.model(X, E, y, node_mask)
 
     @torch.no_grad()
-    def sample(
+    def initialize(
         self,
-        batch_size: int,
-        sample_steps: int,
-        condition_value: float,
-        early_exit: bool = False,
+        batch_size,
+        sample_steps,
+        condition_value,
+        early_exit=False,
         num_nodes=None,
     ):
+        """
+        Prepares internal state so the sampler can run step-by-step.
+        After this step() can be called repeatedly until finished=True.
+        """
+        self.initialized = True
+        self.finished = False
+        self.t_int = 0
+
+        self.batch_size = batch_size
+        self.sample_steps = sample_steps
         self.conditional = condition_value is not None
-        samples = []
-        labels = []
+        self.condition_value = condition_value
+        self.early_exit = early_exit
+
         if num_nodes is None:
-            n_nodes = self.node_dist.sample_n(batch_size, self.device)
-        elif type(num_nodes) is int:
-            n_nodes = num_nodes * torch.ones(
+            self.n_nodes = self.node_dist.sample_n(batch_size, self.device)
+        elif isinstance(num_nodes, int):
+            self.n_nodes = num_nodes * torch.ones(
                 batch_size, device=self.device, dtype=torch.int
             )
         else:
-            assert isinstance(num_nodes, torch.Tensor)
-            n_nodes = num_nodes
-        n_max = torch.max(n_nodes).item()
+            self.n_nodes = num_nodes
+        self.n_max = torch.max(self.n_nodes).item()
 
-        # Build the masks
         arange = (
-            torch.arange(n_max, device=self.device).unsqueeze(0).expand(batch_size, -1)
+            torch.arange(self.n_max, device=self.device)
+            .unsqueeze(0)
+            .expand(batch_size, -1)
         )
-        node_mask = arange < n_nodes.unsqueeze(1)
+        self.node_mask = arange < self.n_nodes.unsqueeze(1)
 
-        # Sample noise  -- z has size (n_samples, n_nodes, n_features)
         z_T = flow_matching_utils.sample_discrete_feature_noise(
-            limit_dist=self.noise_dist.get_limit_dist(), node_mask=node_mask
+            limit_dist=self.limit_dist, node_mask=self.node_mask
         )
         if self.conditional:
             condition = torch.tensor([condition_value], device=self.device).unsqueeze(0)
             z_T.y = condition.repeat(batch_size, 1)
 
-        X, E, y = z_T.X, z_T.E, z_T.y
+        self.X, self.E, self.y = z_T.X, z_T.E, z_T.y
 
-        for t_int in tqdm(range(0, sample_steps)):
-            # this state
-            t_array = t_int * torch.ones((batch_size, 1)).type_as(y)
-            t_norm = t_array / (sample_steps)
-            if ("absorb" in self.cfg.model.transition) and (t_int == 0):
-                # to avoid failure mode of absorbing transition, add epsilon
-                t_norm = t_norm + 1e-6
-            # next state
-            s_array = t_array + 1
-            s_norm = s_array / (sample_steps)
+        self.last_discrete = None
 
-            # Distort time
-            t_norm = self.time_distorter.sample_ft(t_norm)
-            s_norm = self.time_distorter.sample_ft(s_norm)
+    @torch.no_grad()
+    def step(self):
+        """
+        Performs exactly one sampling step.
+        This allows round-robin scheduling across many jobs.
+        """
+        if not self.initialized or self.finished:
+            return
 
-            # Sample z_s
-            sampled_s, sampled_discrete = self.sample_p_zs_given_zt(
-                t_norm,
-                s_norm,
-                X,
-                E,
-                y,
-                node_mask,
+        batch_size = self.batch_size
+        t_int = self.t_int
+        sample_steps = self.sample_steps
+        node_mask = self.node_mask
+        n_nodes = self.n_nodes
+
+        t_array = t_int * torch.ones((batch_size, 1)).type_as(self.y)
+        t_norm = t_array / (sample_steps)
+        if ("absorb" in self.cfg.model.transition) and (t_int == 0):
+            t_norm = t_norm + 1e-6
+        s_array = t_array + 1
+        s_norm = s_array / (sample_steps)
+
+        t_norm = self.time_distorter.sample_ft(t_norm)
+        s_norm = self.time_distorter.sample_ft(s_norm)
+
+        sampled_s, sampled_discrete = self.sample_p_zs_given_zt(
+            t_norm, s_norm, self.X, self.E, self.y, node_mask
+        )
+
+        if self.early_exit:
+            self.X, self.E, self.y = (
+                sampled_discrete.X,
+                sampled_discrete.E,
+                sampled_discrete.y,
             )
+            n = n_nodes[0]
+            atom_types = self.X[0, :n].cpu()
+            edge_types = self.E[0, :n, :n].cpu()
+            valid = compute_validity([[atom_types, edge_types]])
+            if valid == 1.0:
+                self.finished = True
+                self.last_discrete = sampled_discrete
+                return
 
-            if early_exit:
-                X, E, y = sampled_discrete.X, sampled_discrete.E, sampled_discrete.y
-                n = n_nodes[0]
-                atom_types = X[0, :n].cpu()
-                edge_types = E[0, :n, :n].cpu()
-                samples = [[atom_types, edge_types]]
-                if compute_validity(samples) == 1.0:
-                    break
+        self.X, self.E, self.y = sampled_s.X, sampled_s.E, sampled_s.y
+        self.last_discrete = sampled_discrete
 
-            X, E, y = sampled_s.X, sampled_s.E, sampled_s.y
+        self.t_int += 1
+        if self.t_int >= sample_steps:
+            self.finished = True
 
-        # Sample
-        X, E, y = sampled_discrete.X, sampled_discrete.E, sampled_discrete.y
+    @torch.no_grad()
+    def finalize(self):
+        """Returns the generated graph after all steps are completed."""
+        if self.last_discrete is None:
+            raise RuntimeError("No sampling performed")
+
+        X, E, y = self.last_discrete.X, self.last_discrete.E, self.last_discrete.y
         X, E, y = self.noise_dist.ignore_virtual_classes(X, E, y)
 
-        # Save generated graphs
-        molecule_list = []
-        label_list = []
-        for i in range(batch_size):
-            n = n_nodes[i]
+        samples = []
+        labels = []
+        for i in range(self.batch_size):
+            n = self.n_nodes[i]
             atom_types = X[i, :n].cpu()
             edge_types = E[i, :n, :n].cpu()
-            molecule_list.append([atom_types, edge_types])
-            label_list.append(y[i].cpu())
-
-        samples.extend(molecule_list)
-        labels.extend(label_list)
+            samples.append([atom_types, edge_types])
+            labels.append(y[i].cpu())
 
         return samples, labels
+
+    def sample(
+        self,
+        batch_size,
+        sample_steps,
+        condition_value,
+        early_exit=False,
+        num_nodes=None,
+    ):
+        """Full sampling function that runs all steps internally."""
+        self.initialize(
+            batch_size, sample_steps, condition_value, early_exit, num_nodes
+        )
+
+        for _ in range(sample_steps):
+            if self.finished:
+                break
+            self.step()
+
+        return self.finalize()
 
     def compute_step_probs(self, R_t_X, R_t_E, X_t, E_t, dt, limit_x, limit_e):
         step_probs_X = R_t_X * dt  # type: ignore # (B, D, S)
