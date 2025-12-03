@@ -6,6 +6,7 @@ from flow_matching import flow_matching_utils
 from flow_matching.noise_distribution import NoiseDistribution
 from flow_matching.rate_matrix import RateMatrixDesigner
 from flow_matching.time_distorter import TimeDistorter
+from metrics.molecular_metrics import compute_validity
 from models.transformer_model import GraphTransformer
 from tqdm import tqdm
 
@@ -79,6 +80,7 @@ class QM9CondSampler:
         batch_size: int,
         sample_steps: int,
         condition_value: float,
+        early_exit: bool = False,
         num_nodes=None,
     ):
         self.conditional = condition_value is not None
@@ -127,7 +129,7 @@ class QM9CondSampler:
             s_norm = self.time_distorter.sample_ft(s_norm)
 
             # Sample z_s
-            sampled_s, _ = self.sample_p_zs_given_zt(
+            sampled_s, sampled_discrete = self.sample_p_zs_given_zt(
                 t_norm,
                 s_norm,
                 X,
@@ -136,12 +138,19 @@ class QM9CondSampler:
                 node_mask,
             )
 
+            if early_exit:
+                X, E, y = sampled_discrete.X, sampled_discrete.E, sampled_discrete.y
+                n = n_nodes[0]
+                atom_types = X[0, :n].cpu()
+                edge_types = E[0, :n, :n].cpu()
+                samples = [[atom_types, edge_types]]
+                if compute_validity(samples) == 1.0:
+                    break
+
             X, E, y = sampled_s.X, sampled_s.E, sampled_s.y
 
         # Sample
-        sampled_s = sampled_s.mask(node_mask, collapse=True)
-        X, E, y = sampled_s.X, sampled_s.E, sampled_s.y
-
+        X, E, y = sampled_discrete.X, sampled_discrete.E, sampled_discrete.y
         X, E, y = self.noise_dist.ignore_virtual_classes(X, E, y)
 
         # Save generated graphs
