@@ -90,6 +90,10 @@ class QM9CondSampler:
         """
         Prepares internal state so the sampler can run step-by-step.
         After this step() can be called repeatedly until finished=True.
+
+        condition_value (float or tuple of two floats): If a single float,
+        sets the same conditional value for all batch elements. If a tuple,
+        generates a linspace between the two limits for each batch element.
         """
         self.initialized = True
         self.finished = False
@@ -122,8 +126,19 @@ class QM9CondSampler:
             limit_dist=self.limit_dist, node_mask=self.node_mask
         )
         if self.conditional:
-            condition = torch.tensor([condition_value], device=self.device).unsqueeze(0)
-            z_T.y = condition.repeat(batch_size, 1)
+            if isinstance(condition_value, (tuple, list)) and len(condition_value) == 2:
+                condition = torch.linspace(
+                    condition_value[0],
+                    condition_value[1],
+                    steps=batch_size,
+                    device=self.device,
+                ).unsqueeze(1)
+            else:
+                condition = torch.tensor(
+                    [condition_value], device=self.device
+                ).unsqueeze(0)
+                condition = condition.repeat(batch_size, 1)
+            z_T.y = condition
 
         self.X, self.E, self.y = z_T.X, z_T.E, z_T.y
 
