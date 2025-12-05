@@ -6,7 +6,6 @@ from flow_matching import flow_matching_utils
 from flow_matching.noise_distribution import NoiseDistribution
 from flow_matching.rate_matrix import RateMatrixDesigner
 from flow_matching.time_distorter import TimeDistorter
-from metrics.molecular_metrics import compute_validity
 from models.transformer_model import GraphTransformer
 
 
@@ -36,6 +35,7 @@ class QM9CondSampler:
         extra_features,
         domain_features,
         model,
+        evaluator,
         eta,
         omega,
         distortion,
@@ -55,6 +55,7 @@ class QM9CondSampler:
         self.noise_dist.update_dataset_infos(qm9_dataset_infos)
 
         self.model = model
+        self.evaluator = evaluator
 
         self.time_distorter = TimeDistorter(
             sample_distortion=distortion,
@@ -166,7 +167,7 @@ class QM9CondSampler:
             n = n_nodes[0]
             atom_types = self.X[0, :n].cpu()
             edge_types = self.E[0, :n, :n].cpu()
-            valid = compute_validity([[atom_types, edge_types]])
+            valid = self.evaluator.compute_validity([[atom_types, edge_types]])
             if valid == 1.0:
                 self.finished = True
                 self.last_discrete = sampled_discrete

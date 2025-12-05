@@ -4,7 +4,7 @@ import hydra
 import torch
 from flow_matching.sampler import load_transformer_model
 from flow_matching.sampler import QM9CondSampler
-from metrics.molecular_metrics import compute_validity
+from metrics.molecular_metrics import Evaluator
 from metrics.qm9_info import QM9Infos
 from models.extra_features import ExtraFeatures
 from models.extra_features import ExtraMolecularFeatures
@@ -28,20 +28,22 @@ def main(cfg: DictConfig):
         dataset_info=qm9_infos,
     )
     domain_features = ExtraMolecularFeatures(dataset_infos=qm9_infos)
+    evaluator = Evaluator()
     sampler = QM9CondSampler(
         cfg,
         qm9_dataset_infos=qm9_infos,
         extra_features=extra_features,
         domain_features=domain_features,
         model=model,
+        evaluator=evaluator,
         eta=0,
         omega=1,
         distortion="polydec",
     )
     print("Sampling...")
     start = time.time()
-    samples, _ = sampler.sample(
-        batch_size=1,
+    samples, labels = sampler.sample(
+        batch_size=50,
         sample_steps=100,
         condition_value=-400,
     )
@@ -49,9 +51,14 @@ def main(cfg: DictConfig):
     print(f"Sampling took {end - start:.4f} seconds.")
 
     start = time.time()
-    print(compute_validity(samples))
+    print(evaluator.compute_validity(samples))
     end = time.time()
     print(f"Validity computation took {end - start:.4f} seconds.")
+    start = time.time()
+    mae = evaluator.cond_sample_metric(samples, labels, 32)
+    end = time.time()
+    print(mae)
+    print(f"Conditional property computation took {end - start:.4f} seconds.")
 
 
 if __name__ == "__main__":
