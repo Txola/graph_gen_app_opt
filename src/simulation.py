@@ -72,6 +72,17 @@ class Server:
             "finished": False,
             "service_start": None
         }
+    
+    def _check_valid_graph(self, sampler):
+        n = sampler.n_nodes[0]
+        atom_types = sampler.X[0, :n].argmax(dim=-1).cpu().numpy().astype(int)
+        edge_types = sampler.E[0, :n, :n].argmax(dim=-1).cpu().numpy().astype(int)
+        
+        valid = self.evaluator.compute_validity([[atom_types, edge_types]])
+        
+        return valid == 1.0
+
+
 
 
     def _work(self, task_descriptor):
@@ -82,8 +93,11 @@ class Server:
 
 
     def _work_fcfs(self, task_descriptor):
-        service_start = time.time() - self.start_time
-        
+        if task_descriptor["service_start"] is None:
+            task_descriptor["service_start"] = time.time() - self.start_time
+
+        service_start = task_descriptor["service_start"]
+
         sampler = QM9CondSampler(
             self.cfg,
             qm9_dataset_infos=self.qm9_infos,
@@ -94,35 +108,46 @@ class Server:
             eta=0, omega=1,
             distortion="polydec"
         )
-        
-        samples, _ = sampler.sample(
-            batch_size=1,
-            sample_steps=int(task_descriptor["sample_steps"]),
-            condition_value=task_descriptor["condition_value"]
-        )
+
+        finished = False
+        while not finished:
+            samples, _ = sampler.sample(
+                batch_size=1,
+                sample_steps=int(task_descriptor["sample_steps"]),
+                condition_value=task_descriptor["condition_value"]
+            )
+
+            if getattr(self.cfg.sample, "rerun_if_invalid", False):
+                finished = self._check_valid_graph(sampler)
+            else:
+                finished = True
+
         service_end = time.time() - self.start_time
 
         return {
             "service_start": service_start,
             "service_end": service_end,
-            "service_duration": service_end - service_start
+            "service_duration": service_end - service_start,
+            "finished": True
         }
+
         
     def _work_rr(self, task_descriptor):
         if task_descriptor["service_start"] is None:
             task_descriptor["service_start"] = time.time() - self.start_time
-        
+
         service_start = task_descriptor["service_start"]
         sampler = task_descriptor["sampler"]
-
         quantum = self.cfg.sample.quantum
 
-        # Ejecutar quantum pasos
         for _ in range(quantum):
             if sampler.finished:
                 break
-            
             sampler.step()
+
+        if getattr(self.cfg.sample, "rerun_if_invalid", False) and sampler.finished:
+            if not self._check_valid_graph(sampler):
+                sampler.finished = False
 
         service_end = time.time() - self.start_time
 
@@ -132,6 +157,7 @@ class Server:
             "service_duration": service_end - service_start,
             "finished": sampler.finished
         }
+
 
 
     def submitter(self):
@@ -172,8 +198,8 @@ class Server:
                     })
                     self.progress.update(1)
 
-                # If the RR job is not finished we send it again to the queue
-                elif schedule == "RR":
+                else:
+                    # print("Return to the queue")
                     task["finished"] = False
                     queue_.put(task)
 

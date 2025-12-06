@@ -11,3 +11,4 @@ sample:
   rdb_crit: dummy
   schedule: 'RR' # We can use FCFS or RR
   quantum: 1
+  retry_invalid_graphs: true
