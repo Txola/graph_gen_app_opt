@@ -1,3 +1,5 @@
+import warnings
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -10,6 +12,10 @@ from models.transformer_model import GraphTransformer
 
 
 def load_transformer_model(cfg, qm9_dataset_infos, device):
+    warnings.filterwarnings(
+        "ignore", message="Initializing zero-element tensors is a no-op"
+    )
+
     model = GraphTransformer(
         n_layers=cfg.model.n_layers,
         input_dims=qm9_dataset_infos.input_dims,

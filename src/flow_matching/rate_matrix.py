@@ -16,10 +16,6 @@ class RateMatrixDesigner:
         self.num_classes_X = len(self.limit_dist.X)
         self.num_classes_E = len(self.limit_dist.E)
 
-        print(
-            f"RateMatrixDesigner: rdb={rdb}, rdb_crit={rdb_crit}, eta={eta}, omega={omega}"
-        )
-
     def compute_graph_rate_matrix(self, t, node_mask, G_t, G_1_pred):
         X_t, E_t = G_t
         X_1_pred, E_1_pred = G_1_pred

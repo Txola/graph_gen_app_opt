@@ -75,9 +75,6 @@ class NoiseDistribution:
             raise ValueError(f"Unknown transition model: {model_transition}")
 
         y_limit = torch.ones(self.y_num_classes) / self.y_num_classes  # typically dummy
-        print(
-            f"Limit distribution of the classes | Nodes: {x_limit} | Edges: {e_limit}"
-        )
         self.limit_dist = utils.PlaceHolder(X=x_limit, E=e_limit, y=y_limit)
 
     def update_input_output_dims(self, input_dims):
