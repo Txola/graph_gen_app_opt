@@ -28,7 +28,7 @@ def build_molecule(atom_types, edge_types, atom_decoder):
     mol = Chem.RWMol()
 
     for at_idx in atom_types_list:
-        mol.AddAtom(Chem.Atom(atom_decoder[at_idx]))
+        mol.AddAtom(Chem.Atom(atom_decoder[int(at_idx)]))
 
     e = torch.triu(edge_types).cpu().numpy()
     e[e >= 5] = 0
@@ -36,7 +36,7 @@ def build_molecule(atom_types, edge_types, atom_decoder):
     rows, cols = np.nonzero(e)
     for i, j in zip(rows, cols):
         if i != j:
-            mol.AddBond(int(i), int(j), BOND_DICT[e[i, j]])
+            mol.AddBond(int(i), int(j), BOND_DICT[int(e[i, j])])
 
     return mol
 
@@ -58,7 +58,7 @@ def build_molecule_with_partial_charges(atom_types, edge_types, atom_decoder):
     mol = Chem.RWMol()
 
     for a in atom_types.tolist():
-        mol.AddAtom(Chem.Atom(atom_decoder[a]))
+        mol.AddAtom(Chem.Atom(atom_decoder[int(a)]))
 
     edge_types = torch.triu(edge_types)
     edge_types = torch.where(edge_types >= 5, torch.zeros_like(edge_types), edge_types)
@@ -66,7 +66,7 @@ def build_molecule_with_partial_charges(atom_types, edge_types, atom_decoder):
 
     for i, j in bonds.tolist():
         if i != j:
-            mol.AddBond(i, j, BOND_DICT[int(edge_types[i, j])])
+            mol.AddBond(int(i), int(j), BOND_DICT[int(edge_types[i, j])])
 
     ok, info = check_valency(mol)
     if ok:
@@ -162,14 +162,14 @@ class Evaluator:
 
             try:
                 e = psi4.energy(self.level, molecule=psi4.geometry(geom))
-            except psi4.driver.SCFConvergenceError:
+            except Exception:
                 continue
 
             energies.append(e)
             true_props.append(input_properties[i].reshape(1, -1))
 
         if len(true_props) == 0:
-            return 0.0
+            return -1.0
 
         true_props = torch.cat(true_props, dim=0)
         pred = torch.FloatTensor(energies).unsqueeze(1)
