@@ -91,6 +91,7 @@ class QM9CondSampler:
         sample_steps,
         condition_value,
         early_exit=False,
+        early_exit_start_step=None,
         num_nodes=None,
     ):
         """
@@ -110,6 +111,12 @@ class QM9CondSampler:
         self.conditional = condition_value is not None
         self.condition_value = condition_value
         self.early_exit = early_exit
+        self.early_exit_start_step = (
+            early_exit_start_step if early_exit_start_step is not None else -1
+        )
+
+        if early_exit and self.batch_size != 1:
+            raise ValueError("Early exit is only supported for batch_size=1.")
 
         if num_nodes is None:
             self.n_nodes = self.node_dist.sample_n(batch_size, self.device)
@@ -179,7 +186,11 @@ class QM9CondSampler:
             t_norm, s_norm, self.X, self.E, self.y, node_mask
         )
 
-        if self.early_exit:
+        if (
+            self.early_exit
+            and self.t_int >= self.early_exit_start_step
+            and self.batch_size == 1
+        ):
             self.X, self.E, self.y = (
                 sampled_discrete.X,
                 sampled_discrete.E,
@@ -227,11 +238,17 @@ class QM9CondSampler:
         sample_steps,
         condition_value,
         early_exit=False,
+        early_exit_start_step=None,
         num_nodes=None,
     ):
         """Full sampling function that runs all steps internally."""
         self.initialize(
-            batch_size, sample_steps, condition_value, early_exit, num_nodes
+            batch_size,
+            sample_steps,
+            condition_value,
+            early_exit,
+            early_exit_start_step,
+            num_nodes,
         )
 
         for _ in range(sample_steps):
