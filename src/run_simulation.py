@@ -22,7 +22,7 @@ def main():
     cfg = OmegaConf.load("../configs/config.yaml")
     
     server = Server(df_jobs, cfg, n_workers=1)
-    results = server.run(save=True, output_name="simulation_output.csv")
+    results = server.run(save=True, output_name="/home/group-2/asier_graph_gen_app_opt/graph_gen_app_opt/outputs_simulation/rr.csv")
 
     print("Simulation finished!")
     print(results.head())

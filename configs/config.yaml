@@ -9,3 +9,5 @@ model:
 sample:
   rdb: 'general'
   rdb_crit: dummy
+  schedule: 'RR' # We can use FCFS or RR
+  quantum: 1

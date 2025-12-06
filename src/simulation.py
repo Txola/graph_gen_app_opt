@@ -10,6 +10,8 @@ torch.cuda.empty_cache()
 from models.extra_features import ExtraFeatures, ExtraMolecularFeatures
 from metrics.qm9_info import QM9Infos
 from flow_matching.sampler import QM9CondSampler
+from flow_matching.sampler import load_transformer_model
+from metrics.molecular_metrics import Evaluator
 
 
 class Server:
@@ -32,24 +34,54 @@ class Server:
         )
         self.domain_features = ExtraMolecularFeatures(dataset_infos=self.qm9_infos)
         self.cfg = cfg
+        self.model = load_transformer_model(self.cfg, self.qm9_infos, "cuda" if torch.cuda.is_available() else "cpu")
+        self.evaluator = Evaluator()
 
 
     def _receive(self):
         job_index, job = next(self.job_it)
 
-        # Wait for the arrival
+        # Wait the arrival time
         time.sleep(job.inter_arrival_time)
-
         arrival_time = time.time() - self.start_time
+
+        if self.cfg.sample.schedule == "RR":
+            sampler = QM9CondSampler(
+                self.cfg,
+                qm9_dataset_infos=self.qm9_infos,
+                extra_features=self.extra_features,
+                domain_features=self.domain_features,
+                model=self.model,
+                evaluator=self.evaluator,
+                eta=0, omega=1,
+                distortion="polydec"
+            )
+            sampler.initialize(
+                batch_size=1,
+                sample_steps=int(job.sample_steps),
+                condition_value=job.condition_value
+            )
+        else:
+            sampler = None
 
         return {
             "arrival_time": arrival_time,
             "sample_steps": job.sample_steps,
-            "condition_value": job.condition_value
+            "condition_value": job.condition_value,
+            "sampler": sampler,
+            "finished": False,
+            "service_start": None
         }
 
 
     def _work(self, task_descriptor):
+        if self.cfg.sample.schedule == "FCFS":
+            return self._work_fcfs(task_descriptor)
+        elif self.cfg.sample.schedule == "RR":
+            return self._work_rr(task_descriptor)
+
+
+    def _work_fcfs(self, task_descriptor):
         service_start = time.time() - self.start_time
         
         sampler = QM9CondSampler(
@@ -57,6 +89,8 @@ class Server:
             qm9_dataset_infos=self.qm9_infos,
             extra_features=self.extra_features,
             domain_features=self.domain_features,
+            model=self.model,
+            evaluator=self.evaluator,
             eta=0, omega=1,
             distortion="polydec"
         )
@@ -72,6 +106,31 @@ class Server:
             "service_start": service_start,
             "service_end": service_end,
             "service_duration": service_end - service_start
+        }
+        
+    def _work_rr(self, task_descriptor):
+        if task_descriptor["service_start"] is None:
+            task_descriptor["service_start"] = time.time() - self.start_time
+        
+        service_start = task_descriptor["service_start"]
+        sampler = task_descriptor["sampler"]
+
+        quantum = self.cfg.sample.quantum
+
+        # Ejecutar quantum pasos
+        for _ in range(quantum):
+            if sampler.finished:
+                break
+            
+            sampler.step()
+
+        service_end = time.time() - self.start_time
+
+        return {
+            "service_start": service_start,
+            "service_end": service_end,
+            "service_duration": service_end - service_start,
+            "finished": sampler.finished
         }
 
 
@@ -93,6 +152,8 @@ class Server:
         queue_ = self.job_queue[idx]
         results = []
 
+        schedule = self.cfg.sample.schedule
+
         while self.running or not queue_.empty():
             if not queue_.empty():
                 task = queue_.get()
@@ -100,18 +161,26 @@ class Server:
 
                 work_info = self._work(task)
 
-                # Build full record
-                results.append({
-                    "arrival_time": task["arrival_time"],
-                    "service_start": work_info["service_start"],
-                    "service_end": work_info["service_end"],
-                    "service_duration": work_info["service_duration"]
-                })
+                finished = work_info.get("finished", True)
 
-                self.progress.update(1)
+                if finished:
+                    results.append({
+                        "arrival_time": task["arrival_time"],
+                        "service_start": work_info["service_start"],
+                        "service_end": work_info["service_end"],
+                        "service_duration": work_info["service_duration"]
+                    })
+                    self.progress.update(1)
+
+                # If the RR job is not finished we send it again to the queue
+                elif schedule == "RR":
+                    task["finished"] = False
+                    queue_.put(task)
 
         print(f"Worker {idx} finished.")
         return results
+
+
 
 
     def run(self, save=True, output_name="simulation_output.csv"):
