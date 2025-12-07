@@ -4,6 +4,52 @@ import pandas as pd
 from models.hyperparameter_model_MLP import VUNPredictorMLP
 
 
+class LookupTable:
+    """
+    Loads an existing lookup table or generates a new one if missing.
+    Allows querying best hyperparameters for a given number of diffusion steps.
+    """
+
+    def __init__(
+        self,
+        lookup_csv="../csvs/lookup_table.csv",
+        training_csv="../csvs/config_results_fixed.csv",
+        num_steps_list=None,
+        generator_kwargs=None,
+    ):
+        """
+        Initializes the LookupTable by loading or generating the lookup table.
+        """
+
+        if generator_kwargs is None:
+            generator_kwargs = {}
+
+        if num_steps_list is None:
+            num_steps_list = list(range(10, 100))
+
+        if os.path.exists(self.lookup_path):
+            print("Loading existing lookup table...")
+            self.table = pd.read_csv(lookup_csv)
+        else:
+            print("Lookup table does not exist. Generating new one...")
+
+            generator = LookupTableGenerator(
+                csv_path=self.training_path, **generator_kwargs
+            )
+            self.table = generator.generate_predictions(
+                num_steps_list=num_steps_list, out_csv=self.lookup_path
+            )
+
+    def get_best_params(self, num_steps):
+        """
+        Returns the best hyperparameters for the number of steps.
+        """
+
+        if num_steps in self.table["num_steps"].values:
+            return self.table[self.table["num_steps"] == num_steps].iloc[0].to_dict()
+        raise ValueError(f"num_steps {num_steps} not found in lookup table.")
+
+
 class LookupTableGenerator:
     def __init__(
         self,
