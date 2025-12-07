@@ -1,3 +1,6 @@
+defaults:
+  - _self_
+  - experiment: mae
 model:
   n_layers: 7
   hidden_mlp_dims: {'X': 256, 'E': 128, 'y': 128}
@@ -9,6 +12,3 @@ model:
 sample:
   rdb: 'general'
   rdb_crit: dummy
-  schedule: 'RR' # We can use FCFS or RR
-  quantum: 1
-  retry_invalid_graphs: true

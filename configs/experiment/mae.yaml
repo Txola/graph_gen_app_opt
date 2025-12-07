@@ -1,0 +1,13 @@
+mode: "steps"
+use_lookup: false
+
+batch_size: 128
+num_folds: 3
+condition_interval: [-460, -350]
+output_filename: "results.csv"
+
+sample_steps_list: [10, 25, 40, 55, 70, 85, 100]
+early_exit: false
+
+early_exit_start_steps: [10, 20, 30, 40]
+num_steps: 100
