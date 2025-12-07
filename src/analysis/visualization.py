@@ -3,6 +3,7 @@ import re
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import os
 
 
 def clean_tensor(x):
@@ -128,3 +129,65 @@ def plot_validity(
     plt.legend()
     plt.tight_layout()
     plt.show()
+    
+def plots_simulation(csv_path="../../outputs_simulation/fcfs.csv", output_folder="../../plots/"):
+
+    os.makedirs(output_folder, exist_ok=True)
+
+    df = pd.read_csv(csv_path)
+
+    base_name = os.path.splitext(os.path.basename(csv_path))[0]
+
+    # Waiting Time
+    plt.figure(figsize=(8, 5))
+    plt.hist(df["waiting_time"], bins=40, edgecolor='black')
+    plt.title(f"Waiting Time Distribution ({base_name})")
+    plt.xlabel("Waiting Time")
+    plt.ylabel("Frequency")
+    plt.grid(True)
+
+    out_path = os.path.join(output_folder, f"{base_name}_waiting_time_hist.png")
+    plt.savefig(out_path, dpi=300, bbox_inches="tight")
+    plt.close()
+    print(f"[OK] Saved: {out_path}")
+
+    # Service Duration
+    plt.figure(figsize=(8, 5))
+    plt.hist(df["service_duration"], bins=40, edgecolor='black')
+    plt.title(f"Service Duration Distribution ({base_name})")
+    plt.xlabel("Service Duration")
+    plt.ylabel("Frequency")
+    plt.grid(True)
+
+    out_path = os.path.join(output_folder, f"{base_name}_service_duration_hist.png")
+    plt.savefig(out_path, dpi=300, bbox_inches="tight")
+    plt.close()
+    print(f"[OK] Saved: {out_path}")
+
+    # System Time
+    plt.figure(figsize=(8, 5))
+    plt.hist(df["system_time"], bins=40, edgecolor='black')
+    plt.title(f"System Time Distribution ({base_name})")
+    plt.xlabel("System Time")
+    plt.ylabel("Frequency")
+    plt.grid(True)
+    out_path = os.path.join(output_folder, f"{base_name}_system_time_hist.png")
+    plt.savefig(out_path, dpi=300, bbox_inches="tight")
+    plt.close()
+    print(f"[OK] Saved: {out_path}")
+
+    # Percentile Curve
+    df_sorted = df.sort_values("waiting_time")
+    df_sorted["p"] = df_sorted.index / len(df_sorted)
+
+    plt.figure(figsize=(8, 5))
+    plt.plot(df_sorted["p"], df_sorted["waiting_time"])
+    plt.title(f"Waiting Time Percentile Curve ({base_name})")
+    plt.xlabel("Percentile")
+    plt.ylabel("Waiting Time")
+    plt.grid(True)
+
+    out_path = os.path.join(output_folder, f"{base_name}_waiting_time_percentiles.png")
+    plt.savefig(out_path, dpi=300, bbox_inches="tight")
+    plt.close()
+    print(f"[OK] Saved: {out_path}")
