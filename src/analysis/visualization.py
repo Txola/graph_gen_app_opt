@@ -1,9 +1,9 @@
+import os
 import re
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import os
 
 
 def clean_tensor(x):
@@ -71,7 +71,7 @@ def plot_mae(
     mae_col="mae_no_exit",
     validity_col="validity_no_exit",
     count_col="num_valids_no_exit",
-    title="MAE vs Steps",
+    title="MAE (Energy) vs Steps",
 ):
     """Plot MAE vs Steps from given CSV files."""
 
@@ -81,6 +81,8 @@ def plot_mae(
     plt.figure(figsize=(9, 5))
 
     for csv_file, label in zip(csv_files, labels):
+        label = label.split(".csv")[0].split("/")[-1]
+
         steps, mae_mean, mae_low, mae_high, _, _, _ = load_stats(
             csv_file, steps_col, mae_col, validity_col, count_col
         )
@@ -89,7 +91,7 @@ def plot_mae(
         plt.fill_between(steps, mae_low, mae_high, alpha=0.2)
 
     plt.xlabel("Steps")
-    plt.ylabel("MAE")
+    plt.ylabel("MAE (Energy)")
     plt.title(title)
     plt.grid(True)
     plt.legend()
@@ -114,6 +116,8 @@ def plot_validity(
     plt.figure(figsize=(9, 5))
 
     for csv_file, label in zip(csv_files, labels):
+        label = label.split(".csv")[0].split("/")[-1]
+
         steps, _, _, _, val_mean, val_low, val_high = load_stats(
             csv_file, steps_col, mae_col, validity_col, count_col
         )
@@ -123,15 +127,16 @@ def plot_validity(
 
     plt.xlabel("Steps")
     plt.ylabel("Validity")
-    plt.ylim(0, 1.05)
+    plt.ylim(0.25, 1)
     plt.title(title)
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
-    plt.show()
-    
-def plots_simulation(csv_path="../../outputs_simulation/fcfs.csv", output_folder="../../plots/"):
 
+
+def plots_simulation(
+    csv_path="../../outputs_simulation/fcfs.csv", output_folder="../../plots/"
+):
     os.makedirs(output_folder, exist_ok=True)
 
     df = pd.read_csv(csv_path)
@@ -140,7 +145,7 @@ def plots_simulation(csv_path="../../outputs_simulation/fcfs.csv", output_folder
 
     # Waiting Time
     plt.figure(figsize=(8, 5))
-    plt.hist(df["waiting_time"], bins=40, edgecolor='black')
+    plt.hist(df["waiting_time"], bins=40, edgecolor="black")
     plt.title(f"Waiting Time Distribution ({base_name})")
     plt.xlabel("Waiting Time")
     plt.ylabel("Frequency")
@@ -153,7 +158,7 @@ def plots_simulation(csv_path="../../outputs_simulation/fcfs.csv", output_folder
 
     # Service Duration
     plt.figure(figsize=(8, 5))
-    plt.hist(df["service_duration"], bins=40, edgecolor='black')
+    plt.hist(df["service_duration"], bins=40, edgecolor="black")
     plt.title(f"Service Duration Distribution ({base_name})")
     plt.xlabel("Service Duration")
     plt.ylabel("Frequency")
@@ -166,7 +171,7 @@ def plots_simulation(csv_path="../../outputs_simulation/fcfs.csv", output_folder
 
     # System Time
     plt.figure(figsize=(8, 5))
-    plt.hist(df["system_time"], bins=40, edgecolor='black')
+    plt.hist(df["system_time"], bins=40, edgecolor="black")
     plt.title(f"System Time Distribution ({base_name})")
     plt.xlabel("System Time")
     plt.ylabel("Frequency")
