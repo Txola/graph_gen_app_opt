@@ -25,19 +25,20 @@ class LookupTable:
             generator_kwargs = {}
 
         if num_steps_list is None:
-            num_steps_list = list(range(10, 100))
+            num_steps_list = list(range(25, 70))
 
-        if os.path.exists(self.lookup_path):
+        if os.path.exists(lookup_csv):
             print("Loading existing lookup table...")
             self.table = pd.read_csv(lookup_csv)
+            print("Lookup table loaded.")
         else:
             print("Lookup table does not exist. Generating new one...")
 
             generator = LookupTableGenerator(
-                csv_path=self.training_path, **generator_kwargs
+                csv_path=training_csv, **generator_kwargs
             )
             self.table = generator.generate_predictions(
-                num_steps_list=num_steps_list, out_csv=self.lookup_path
+                num_steps_list=num_steps_list,
             )
 
     def get_best_params(self, num_steps):

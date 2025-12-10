@@ -27,7 +27,7 @@ def build_sampler(cfg: DictConfig, sample_steps: int):
     evaluator = Evaluator()
 
     if cfg.experiment.use_lookup:
-        lookup = LookupTable(csv_dir="../csvs/")
+        lookup = LookupTable()
         params = lookup.get_best_params(sample_steps)
 
         eta = params.get("eta")
