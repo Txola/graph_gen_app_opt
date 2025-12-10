@@ -1,4 +1,6 @@
 import os
+import random
+import time
 
 import numpy as np
 import pandas as pd
@@ -12,11 +14,9 @@ def run_early_exit_batch(
     batch_size,
     condition_interval,
     early_exit_start_step=None,
+    compute_mae=True,
+    ensure_validity=False,
 ):
-    """
-    Runs sampling `batch_size` times because early exit only works with batch_size=1.
-    """
-
     cond_values = torch.linspace(
         condition_interval[0], condition_interval[1], batch_size
     ).tolist()
@@ -28,24 +28,36 @@ def run_early_exit_batch(
         mae, validity, len_valid = run_experiment(
             cfg=cfg,
             sample_steps=num_steps,
-            batch_size=1,
+            batch_size=1,  # early exit needs batch=1
             condition_value=cond,
             early_exit=True,
             early_exit_start_step=early_exit_start_step,
+            compute_mae=compute_mae,
+            ensure_validity=ensure_validity,
         )
 
-        if mae < 0:
-            continue
+        if mae is not None:
+            maes.append(mae)
+        if validity is not None:
+            valids.append(validity)
+        cnts += len_valid if len_valid is not None else 0
 
-        maes.append(mae)
-        valids.append(validity)
-        cnts += len_valid
+    mean_mae = float(np.mean(maes)) if compute_mae else None
+    mean_valid = float(np.mean(valids)) if valids else None
 
-    return float(np.mean(maes)), float(np.mean(valids)), cnts
+    return mean_mae, mean_valid, cnts
 
 
 def run_steps_experiment(
-    sample_steps_list, cfg, batch_size, condition, num_folds, output_path, early_exit
+    sample_steps_list,
+    cfg,
+    batch_size,
+    condition,
+    num_folds,
+    output_path,
+    early_exit,
+    compute_mae=True,
+    ensure_validity=False,
 ):
     """
     Runs the experiment for num_folds folds.
@@ -67,10 +79,20 @@ def run_steps_experiment(
         for steps in sample_steps_list:
             print(f"  Running {steps} steps...")
 
+            start_time = time.time()
+
             if not early_exit:
                 mae_no_exit, val_no_exit, len_valids = run_experiment(
-                    cfg, steps, batch_size, condition, early_exit=False
+                    cfg,
+                    steps,
+                    batch_size,
+                    condition,
+                    early_exit=False,
+                    compute_mae=compute_mae,
+                    ensure_validity=ensure_validity,
                 )
+
+                duration = time.time() - start_time
 
                 all_results.append(
                     {
@@ -79,16 +101,23 @@ def run_steps_experiment(
                         "mae_no_exit": mae_no_exit,
                         "validity_no_exit": val_no_exit,
                         "num_valids_no_exit": len_valids,
+                        "execution_time_sec": duration / batch_size,
                     }
                 )
+
             else:
                 mae_exit, val_exit, cnt_exit = run_early_exit_batch(
                     cfg=cfg,
                     num_steps=steps,
                     batch_size=batch_size,
                     condition_interval=condition,
+                    early_exit=True,
                     early_exit_start_step=None,
+                    compute_mae=compute_mae,
+                    ensure_validity=ensure_validity,
                 )
+
+                duration = time.time() - start_time
 
                 all_results.append(
                     {
@@ -97,11 +126,13 @@ def run_steps_experiment(
                         "mae_early_exit": mae_exit,
                         "validity_early_exit": val_exit,
                         "num_valids_early_exit": cnt_exit,
+                        "execution_time_sec": duration / batch_size,
                     }
                 )
 
             df = pd.DataFrame(all_results)
             df.to_csv(output_path, index=False)
+
     print(f"[SAVED] {output_path}")
     return df
 
@@ -114,6 +145,8 @@ def run_early_exit_start_step_experiment(
     num_steps,
     num_folds,
     output_path,
+    compute_mae=True,
+    ensure_validity=False,
 ):
     """
     Runs an experiment varying early_exit_start_step with fixed num_steps.
@@ -130,6 +163,8 @@ def run_early_exit_start_step_experiment(
         for start_step in early_exit_start_steps:
             print(f"  Running early_exit_start_step={start_step}...")
 
+            start_time = time.time()
+
             mae_exit, val_exit, cnt_exit = run_early_exit_batch(
                 cfg=cfg,
                 num_steps=num_steps,
@@ -137,7 +172,12 @@ def run_early_exit_start_step_experiment(
                 condition_interval=condition,
                 early_exit=True,
                 early_exit_start_step=start_step,
+                compute_mae=compute_mae,
+                ensure_validity=ensure_validity,
             )
+
+            duration = time.time() - start_time
+
             all_results.append(
                 {
                     "fold": fold,
@@ -145,11 +185,70 @@ def run_early_exit_start_step_experiment(
                     "mae_early_exit": mae_exit,
                     "validity_early_exit": val_exit,
                     "num_valids_early_exit": cnt_exit,
+                    "execution_time_sec": duration / batch_size,
                 }
             )
 
             df = pd.DataFrame(all_results)
             df.to_csv(output_path, index=False)
+
     print(f"[SAVED] {output_path}")
+    return df
+
+
+def run_repeated_sampling_experiment(
+    cfg,
+    sample_steps: int,
+    repeats: int,
+    condition,
+    output_path,
+    compute_mae=True,
+    ensure_validity=False,
+):
+    """
+    Repeatedly sample with batch_size=1 for timing and stability analysis.
+    If condition is a tuple (low, high), a random value is drawn each run.
+    """
+
+    all_results = []
+
+    interval_mode = isinstance(condition, (tuple, list)) and len(condition) == 2
+
+    for i in range(repeats):
+        print(f"  Run {i + 1}/{repeats} (steps={sample_steps})...")
+        if interval_mode:
+            cond_val = random.uniform(condition[0], condition[1])
+        else:
+            cond_val = condition
+
+        start_time = time.time()
+
+        mae, validity, len_valids = run_experiment(
+            cfg=cfg,
+            sample_steps=sample_steps,
+            batch_size=1,
+            condition_value=cond_val,
+            early_exit=cfg.experiment.early_exit,
+            early_exit_start_step=None,
+            compute_mae=compute_mae,
+            ensure_validity=ensure_validity,
+        )
+
+        duration = time.time() - start_time
+
+        all_results.append(
+            {
+                "steps": sample_steps,
+                "run_index": i,
+                "condition_value": cond_val,
+                "execution_time_sec": duration,
+                "mae": mae,
+                "validity": validity,
+                "num_valids": len_valids,
+            }
+        )
+
+        df = pd.DataFrame(all_results)
+        df.to_csv(output_path, index=False)
 
     return df

@@ -60,20 +60,33 @@ def run_experiment(
     condition_value,
     early_exit: bool,
     early_exit_start_step: int = None,
+    compute_mae: bool = True,
+    ensure_validity: bool = False,
 ):
-    """Run a sampling experiment for given settings."""
+    """Run a sampling experiment with optional evaluation and validity enforcement."""
 
     sampler, evaluator = build_sampler(cfg, sample_steps)
 
-    samples, labels = sampler.sample(
-        batch_size=batch_size,
-        sample_steps=sample_steps,
-        condition_value=condition_value,
-        early_exit=early_exit,
-        early_exit_start_step=early_exit_start_step,
-    )
+    while True:
+        samples, labels = sampler.sample(
+            batch_size=batch_size,
+            sample_steps=sample_steps,
+            condition_value=condition_value,
+            early_exit=early_exit,
+            early_exit_start_step=early_exit_start_step,
+        )
 
-    validity = evaluator.compute_validity(samples)
-    mae, len_valids = evaluator.cond_sample_metric(samples, labels, num_eval=batch_size)
+        validity = evaluator.compute_validity(samples)
+
+        if ensure_validity and validity != 1.0:
+            continue
+        break
+
+    if compute_mae:
+        mae, len_valids = evaluator.cond_sample_metric(
+            samples, labels, num_eval=batch_size
+        )
+    else:
+        mae, len_valids = None, None
 
     return mae, validity, len_valids

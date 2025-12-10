@@ -1,12 +1,12 @@
 import os
 import re
+from typing import List
+from typing import Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import os
 import seaborn as sns
-
 from metrics.mae_estimator import MAEEstimator
 
 
@@ -17,85 +17,87 @@ def clean_tensor(x):
     return float(x)
 
 
+def load_csv(csv_path):
+    """Load CSV and return DataFrame."""
+
+    df = pd.read_csv(csv_path)
+    for col in df.columns:
+        df[col] = df[col].apply(clean_tensor)
+    return df
+
+
 def bootstrap_ci(values, n_samples=2000, low=5, high=95):
     """Obtain bootstrap confidence intervals for the mean of the given values."""
     values = np.array(values)
     N = len(values)
-
     boot_means = []
     for _ in range(n_samples):
         sample = np.random.choice(values, size=N, replace=True)
         boot_means.append(sample.mean())
-
     return np.percentile(boot_means, low), np.percentile(boot_means, high)
 
 
-def load_stats(csv_file, steps_col, mae_col, validity_col, count_col):
-    df = pd.read_csv(csv_file)
-    df[mae_col] = df[mae_col].apply(clean_tensor)
-    df = df[df[count_col] > 0].copy()
+def compute_stats(df: pd.DataFrame, value_col: str, group_col: str):
+    """
+    Compute mean and bootstrap confidence intervals for error bars.
+    Returns (x, mean, ci_low, ci_high)
+    """
+    x = []
+    mean = []
+    ci_low = []
+    ci_high = []
 
-    grouped = df.groupby(steps_col)
+    for step, group in df.groupby(group_col):
+        vals = group[value_col].values
+        x.append(step)
+        mean_val = np.mean(vals)
+        mean.append(mean_val)
+        low, high = bootstrap_ci(vals)
+        ci_low.append(low)
+        ci_high.append(high)
 
-    steps, mae_mean, mae_low, mae_high = [], [], [], []
-    val_mean, val_low, val_high = [], [], []
-
-    for step, g in grouped:
-        steps.append(step)
-
-        maes = g[mae_col].values
-        valids = g[validity_col].values
-
-        mae_mean.append(maes.mean())
-        val_mean.append(valids.mean())
-
-        lo_m, hi_m = bootstrap_ci(maes)
-        lo_v, hi_v = bootstrap_ci(valids)
-
-        mae_low.append(lo_m)
-        mae_high.append(hi_m)
-        val_low.append(lo_v)
-        val_high.append(hi_v)
-
-    return (
-        np.array(steps),
-        np.array(mae_mean),
-        np.array(mae_low),
-        np.array(mae_high),
-        np.array(val_mean),
-        np.array(val_low),
-        np.array(val_high),
-    )
+    return np.array(x), np.array(mean), np.array(ci_low), np.array(ci_high)
 
 
-def plot_mae(
-    csv_files,
-    labels=None,
+def plot_curve_with_band(x, mean, low, high, label):
+    """Line with shaded confidence / variability band."""
+    plt.plot(x, mean, "-o", label=label)
+    plt.fill_between(x, low, high, alpha=0.2)
+
+
+def plot_histogram(data, title, xlabel, bins=30):
+    """Simple histogram."""
+    plt.figure(figsize=(8, 4))
+    plt.hist(data, bins=bins, alpha=0.7)
+    plt.title(title)
+    plt.xlabel(xlabel)
+    plt.ylabel("Count")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_mae_curves(
+    csv_files: List[str],
+    labels: Optional[List[str]] = None,
     steps_col="steps",
-    mae_col="mae_no_exit",
-    validity_col="validity_no_exit",
-    count_col="num_valids_no_exit",
-    title="MAE (Energy) vs Steps",
+    mae_col="mae",
+    title="MAE vs Steps",
 ):
-    """Plot MAE vs Steps from given CSV files."""
+    """MAE vs Steps for multiple CSV files."""
 
     if labels is None:
-        labels = csv_files
+        labels = [f.split("/")[-1].replace(".csv", "") for f in csv_files]
 
     plt.figure(figsize=(9, 5))
 
-    for csv_file, label in zip(csv_files, labels):
-        label = label.split(".csv")[0].split("/")[-1]
-
-        steps, mae_mean, mae_low, mae_high, _, _, _ = load_stats(
-            csv_file, steps_col, mae_col, validity_col, count_col
-        )
-
-        plt.plot(steps, mae_mean, "-o", label=label)
-        plt.fill_between(steps, mae_low, mae_high, alpha=0.2)
+    for csv_path, label in zip(csv_files, labels):
+        df = load_csv(csv_path)
+        x, mean, low, high = compute_stats(df, mae_col, steps_col)
+        plot_curve_with_band(x, mean, low, high, label)
 
     plt.xlabel("Steps")
-    plt.ylabel("MAE (Energy)")
+    plt.ylabel("MAE")
     plt.title(title)
     plt.grid(True)
     plt.legend()
@@ -103,74 +105,162 @@ def plot_mae(
     plt.show()
 
 
-def plot_validity(
-    csv_files,
-    labels=None,
+def plot_validity_curves(
+    csv_files: List[str],
+    labels: Optional[List[str]] = None,
     steps_col="steps",
-    mae_col="mae_no_exit",
-    validity_col="validity_no_exit",
-    count_col="num_valids_no_exit",
+    val_col="validity",
     title="Validity vs Steps",
 ):
-    """Plot Validity vs Steps from given CSV files."""
+    """Validity vs Steps."""
 
     if labels is None:
-        labels = csv_files
+        labels = [f.split("/")[-1].replace(".csv", "") for f in csv_files]
 
     plt.figure(figsize=(9, 5))
 
-    for csv_file, label in zip(csv_files, labels):
-        label = label.split(".csv")[0].split("/")[-1]
-
-        steps, _, _, _, val_mean, val_low, val_high = load_stats(
-            csv_file, steps_col, mae_col, validity_col, count_col
-        )
-
-        plt.plot(steps, val_mean, "--s", label=label)
-        plt.fill_between(steps, val_low, val_high, alpha=0.2)
+    for csv_path, label in zip(csv_files, labels):
+        df = load_csv(csv_path)
+        x, mean, low, high = compute_stats(df, val_col, steps_col)
+        plot_curve_with_band(x, mean, low, high, label)
 
     plt.xlabel("Steps")
     plt.ylabel("Validity")
-    plt.ylim(0.25, 1)
+    plt.ylim(0, 1)
     plt.title(title)
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
+    plt.show()
+
+
+def plot_time_curves(
+    csv_files: List[str],
+    labels: Optional[List[str]] = None,
+    steps_col="steps",
+    time_col="execution_time_sec",
+    title="Execution Time vs Steps",
+):
+    """Execution time vs Steps."""
+
+    if labels is None:
+        labels = [f.split("/")[-1].replace(".csv", "") for f in csv_files]
+
+    plt.figure(figsize=(9, 5))
+
+    for csv_path, label in zip(csv_files, labels):
+        df = load_csv(csv_path)
+        x, mean, low, high = compute_stats(df, time_col, steps_col)
+        plot_curve_with_band(x, mean, low, high, label)
+
+    plt.xlabel("Steps")
+    plt.ylabel("Time (sec)")
+    plt.title(title)
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_early_exit_steps(
+    csv_files: List[str],
+    labels: Optional[List[str]] = None,
+    steps_col="steps",
+    mae_col="mae",
+    title="MAE with Early Exit vs Steps",
+):
+    """Plot MAE vs steps for early-exit experiments."""
+    plot_mae_curves(csv_files, labels, steps_col, mae_col, title)
+
+
+def plot_early_exit_starts(
+    csv_files: List[str],
+    labels: Optional[List[str]] = None,
+    start_col="early_exit_start_step",
+    mae_col="mae",
+    title="MAE vs Early Exit Start Step",
+):
+    """MAE vs where early exit begins."""
+
+    if labels is None:
+        labels = [f.split("/")[-1].replace(".csv", "") for f in csv_files]
+
+    plt.figure(figsize=(9, 5))
+
+    for csv_path, label in zip(csv_files, labels):
+        df = load_csv(csv_path)
+        x, mean, low, high = compute_stats(df, mae_col, start_col)
+        plot_curve_with_band(x, mean, low, high, label)
+
+    plt.xlabel("Early Exit Start Step")
+    plt.ylabel("MAE")
+    plt.title(title)
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_early_exit_timing(
+    csv_files: List[str],
+    labels: Optional[List[str]] = None,
+    steps_col="steps",
+    time_col="execution_time_sec",
+    title="Execution Time with Early Exit vs Steps",
+):
+    plot_time_curves(csv_files, labels, steps_col, time_col, title)
+
+
+def plot_time_histogram_for_step(
+    csv_file: str,
+    step: int,
+    steps_col="steps",
+    time_col="execution_time_sec",
+    bins=30,
+):
+    """Histogram of timing for repeated sampling at a given step."""
+
+    df = load_csv(csv_file)
+    subset = df[df[steps_col] == step][time_col].values
+
+    title = f"Execution Time Distribution (Step={step})"
+    plot_histogram(subset, title, xlabel="Execution Time (sec)", bins=bins)
 
 
 def plots_simulation(
-    csv_path="../../outputs_simulation/fcfs.csv", output_folder="../../plots/", 
+    csv_path="../../outputs_simulation/fcfs.csv",
+    output_folder="../../plots/",
 ):
     os.makedirs(output_folder, exist_ok=True)
 
     df = pd.read_csv(csv_path)
 
     base_name = os.path.splitext(os.path.basename(csv_path))[0]
-    
-    if 'response_time' not in df.columns:
-        df['response_time'] = df['service_end'] - df['arrival_time']
-        
+
+    if "response_time" not in df.columns:
+        df["response_time"] = df["service_end"] - df["arrival_time"]
+
     # Compute statistics
     mean_waiting_time = df["waiting_time"].mean()
     mean_service_duration = df["service_duration"].mean()
     mean_response_time = df["response_time"].mean()
     total_customers = len(df)
-    
+
     # server utilization
     total_simulation_time = df["service_end"].max() - df["arrival_time"].min()
     total_service_time = df["service_duration"].sum()
     server_utilization = total_service_time / total_simulation_time
-    
+
     print(f"\nSimulation Statistics ({base_name}):")
     print(f"  Total Customers Served: {total_customers}")
     print(f"  Mean Waiting Time: {mean_waiting_time:.4f}")
     print(f"  Mean Service Duration: {mean_service_duration:.4f}")
     print(f"  Mean Response Time: {mean_response_time:.4f}")
     print(f"  Server Utilization: {server_utilization:.4f}")
-    
+
     # Waiting Time
     plt.figure(figsize=(8, 5))
-    sns.histplot(df["waiting_time"], bins=20, kde=True, color='skyblue')
+    sns.histplot(df["waiting_time"], bins=20, kde=True, color="skyblue")
     plt.title(f"Waiting Time Distribution ({base_name})")
     plt.xlabel("Waiting Time")
     plt.ylabel("Frequency")
@@ -184,7 +274,7 @@ def plots_simulation(
     # Service Duration
     plt.figure(figsize=(8, 5))
 
-    sns.histplot(df["service_duration"], bins=20, kde=True, color='salmon')
+    sns.histplot(df["service_duration"], bins=20, kde=True, color="salmon")
     plt.title(f"Service Duration Distribution ({base_name})")
     plt.xlabel("Service Duration")
     plt.ylabel("Frequency")
@@ -197,7 +287,7 @@ def plots_simulation(
 
     # Response Time
     plt.figure(figsize=(8, 5))
-    sns.histplot(df["response_time"], bins=20, kde=True, color='lightgreen')
+    sns.histplot(df["response_time"], bins=20, kde=True, color="lightgreen")
     plt.title(f"Response Time Distribution ({base_name})")
     plt.xlabel("Response Time")
     plt.ylabel("Frequency")
@@ -222,8 +312,11 @@ def plots_simulation(
     # plt.savefig(out_path, dpi=300, bbox_inches="tight")
     # plt.close()
     # print(f"[OK] Saved: {out_path}")
-    
-def plot_mae_per_load(load_csv_files, output_path="mae_per_load.png", optimized_model=False):
+
+
+def plot_mae_per_load(
+    load_csv_files, output_path="mae_per_load.png", optimized_model=False
+):
     """Plot MAE vs Load Levels from given CSV files."""
     plt.figure(figsize=(9, 5))
 
@@ -232,21 +325,21 @@ def plot_mae_per_load(load_csv_files, output_path="mae_per_load.png", optimized_
 
     mae_csv_path = (
         "../../src/csvs/mae_estimates_opt.csv"
-        if optimized_model else
-        "../../src/csvs/mae_estimates.csv"
+        if optimized_model
+        else "../../src/csvs/mae_estimates.csv"
     )
     mae_estimator = MAEEstimator(mae_csv_path)
-        
+
     for load_csv_file in load_csv_files:
         load = float(load_csv_file.split("_")[-1].split(".csv")[0])
-        
+
         df_load = pd.read_csv(load_csv_file)
         steps = df_load["sample_steps"].unique()
-        
+
         maes_per_load = [mae_estimator.estimate(step) for step in steps]
         maes.append(np.mean(maes_per_load))
         load_levels.append(load)
-        
+
     load_levels, maes = zip(*sorted(zip(load_levels, maes)))
 
     # plot
@@ -259,8 +352,10 @@ def plot_mae_per_load(load_csv_files, output_path="mae_per_load.png", optimized_
     plt.savefig(output_path, dpi=300)
     plt.show()
 
-    
-def plot_response_time_per_load(load_csv_files, output_path="response_time_per_load.png"):
+
+def plot_response_time_per_load(
+    load_csv_files, output_path="response_time_per_load.png"
+):
     """
     Plot Response Time vs Load Levels from given CSV files.
     """
