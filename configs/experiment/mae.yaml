@@ -9,5 +9,9 @@ output_filename: "results.csv"
 sample_steps_list: [10, 25, 40, 55, 70, 85, 100]
 early_exit: false
 
-early_exit_start_steps: [10, 20, 30, 40]
-num_steps: 100
+early_exit_start_steps: [10, 25, 30, 40]
+num_steps: 70
+
+compute_mae: true
+ensure_validity: false
+repeats: 1000
