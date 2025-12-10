@@ -147,12 +147,14 @@ class Evaluator:
             except Exception:
                 continue
 
-            conf = mol.GetConformer()
-
-            # Charge and multiplicity
-            charge = Chem.GetFormalCharge(mol)
-            radical_e = sum(a.GetNumRadicalElectrons() for a in mol.GetAtoms())
-            spin_mult = int(2 * (radical_e / 2) + 1)
+            try:
+                conf = mol.GetConformer()
+                # Charge and multiplicity
+                charge = Chem.GetFormalCharge(mol)
+                radical_e = sum(a.GetNumRadicalElectrons() for a in mol.GetAtoms())
+                spin_mult = int(2 * (radical_e / 2) + 1)
+            except Exception:
+                continue
 
             # Psi4 geometry
             geom = f"{charge} {spin_mult}"
