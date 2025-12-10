@@ -1,5 +1,6 @@
 import subprocess
 import sys
+import numpy as np
 
 def run(cmd):
     print("Running command:", " ".join(cmd))
@@ -8,9 +9,10 @@ def run(cmd):
 def main():
     
     args = sys.argv
-    loads = [0.25, 0.5, 0.75, 0.9, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0]
+    loads = np.arange(1.0, 4.1, 0.5).tolist()
 
-    # Parámetros comunes
+
+    # common parameters
     base_cmd = ["python", "run_simulation.py", "n_jobs=500"]
     
     for load in loads:
