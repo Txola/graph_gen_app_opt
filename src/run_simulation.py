@@ -82,7 +82,7 @@ def main():
         raise ValueError("Configuration combination not supported for naming convention.")
     OUTPUT_DIR = repo_root / "outputs_simulation" / exp_name
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    output_name = f"arrivals_{mean_inter_arrival}"
+    output_name = f"arrivals_{mean_inter_arrival}.csv"
     output_path = OUTPUT_DIR / output_name
 
     server = Server(df_jobs, cfg, n_workers=1)

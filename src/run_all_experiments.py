@@ -62,10 +62,10 @@ def main():
 
         else:
             print("Usage:")
-            print("  python run_all_experiments.py experiment=fcfs_base")
-            print("  python run_all_experiments.py experiment=rr_base")
-            print("  python run_all_experiments.py experiment=rr_opt")
-            print("  python run_all_experiments.py experiment=rr_opt_dynamic")
+            print("  python run_all_experiments.py fcfs_base")
+            print("  python run_all_experiments.py rr_base")
+            print("  python run_all_experiments.py rr_opt")
+            print("  python run_all_experiments.py rr_opt_dynamic")
             return
 
 
