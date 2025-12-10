@@ -4,6 +4,10 @@ import re
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import os
+import seaborn as sns
+
+from metrics.mae_estimator import MAEEstimator
 
 
 def clean_tensor(x):
@@ -135,17 +139,38 @@ def plot_validity(
 
 
 def plots_simulation(
-    csv_path="../../outputs_simulation/fcfs.csv", output_folder="../../plots/"
+    csv_path="../../outputs_simulation/fcfs.csv", output_folder="../../plots/", 
 ):
     os.makedirs(output_folder, exist_ok=True)
 
     df = pd.read_csv(csv_path)
 
     base_name = os.path.splitext(os.path.basename(csv_path))[0]
-
+    
+    if 'response_time' not in df.columns:
+        df['response_time'] = df['service_end'] - df['arrival_time']
+        
+    # Compute statistics
+    mean_waiting_time = df["waiting_time"].mean()
+    mean_service_duration = df["service_duration"].mean()
+    mean_response_time = df["response_time"].mean()
+    total_customers = len(df)
+    
+    # server utilization
+    total_simulation_time = df["service_end"].max() - df["arrival_time"].min()
+    total_service_time = df["service_duration"].sum()
+    server_utilization = total_service_time / total_simulation_time
+    
+    print(f"\nSimulation Statistics ({base_name}):")
+    print(f"  Total Customers Served: {total_customers}")
+    print(f"  Mean Waiting Time: {mean_waiting_time:.4f}")
+    print(f"  Mean Service Duration: {mean_service_duration:.4f}")
+    print(f"  Mean Response Time: {mean_response_time:.4f}")
+    print(f"  Server Utilization: {server_utilization:.4f}")
+    
     # Waiting Time
     plt.figure(figsize=(8, 5))
-    plt.hist(df["waiting_time"], bins=40, edgecolor="black")
+    sns.histplot(df["waiting_time"], bins=20, kde=True, color='skyblue')
     plt.title(f"Waiting Time Distribution ({base_name})")
     plt.xlabel("Waiting Time")
     plt.ylabel("Frequency")
@@ -158,7 +183,8 @@ def plots_simulation(
 
     # Service Duration
     plt.figure(figsize=(8, 5))
-    plt.hist(df["service_duration"], bins=40, edgecolor="black")
+
+    sns.histplot(df["service_duration"], bins=20, kde=True, color='salmon')
     plt.title(f"Service Duration Distribution ({base_name})")
     plt.xlabel("Service Duration")
     plt.ylabel("Frequency")
@@ -169,30 +195,95 @@ def plots_simulation(
     plt.close()
     print(f"[OK] Saved: {out_path}")
 
-    # System Time
+    # Response Time
     plt.figure(figsize=(8, 5))
-    plt.hist(df["system_time"], bins=40, edgecolor="black")
-    plt.title(f"System Time Distribution ({base_name})")
-    plt.xlabel("System Time")
+    sns.histplot(df["response_time"], bins=20, kde=True, color='lightgreen')
+    plt.title(f"Response Time Distribution ({base_name})")
+    plt.xlabel("Response Time")
     plt.ylabel("Frequency")
     plt.grid(True)
-    out_path = os.path.join(output_folder, f"{base_name}_system_time_hist.png")
+    out_path = os.path.join(output_folder, f"{base_name}_response_time_hist.png")
     plt.savefig(out_path, dpi=300, bbox_inches="tight")
     plt.close()
     print(f"[OK] Saved: {out_path}")
 
-    # Percentile Curve
-    df_sorted = df.sort_values("waiting_time")
-    df_sorted["p"] = df_sorted.index / len(df_sorted)
+    # # Percentile Curve
+    # df_sorted = df.sort_values("waiting_time")
+    # df_sorted["p"] = df_sorted.index / len(df_sorted)
 
-    plt.figure(figsize=(8, 5))
-    plt.plot(df_sorted["p"], df_sorted["waiting_time"])
-    plt.title(f"Waiting Time Percentile Curve ({base_name})")
-    plt.xlabel("Percentile")
-    plt.ylabel("Waiting Time")
+    # plt.figure(figsize=(8, 5))
+    # plt.plot(df_sorted["p"], df_sorted["waiting_time"])
+    # plt.title(f"Waiting Time Percentile Curve ({base_name})")
+    # plt.xlabel("Percentile")
+    # plt.ylabel("Waiting Time")
+    # plt.grid(True)
+
+    # out_path = os.path.join(output_folder, f"{base_name}_waiting_time_percentiles.png")
+    # plt.savefig(out_path, dpi=300, bbox_inches="tight")
+    # plt.close()
+    # print(f"[OK] Saved: {out_path}")
+    
+def plot_mae_per_load(load_csv_files, output_path="mae_per_load.png", optimized_model=False):
+    """Plot MAE vs Load Levels from given CSV files."""
+    plt.figure(figsize=(9, 5))
+
+    load_levels = []
+    maes = []
+
+    mae_csv_path = (
+        "../../src/csvs/mae_estimates_opt.csv"
+        if optimized_model else
+        "../../src/csvs/mae_estimates.csv"
+    )
+    mae_estimator = MAEEstimator(mae_csv_path)
+        
+    for load_csv_file in load_csv_files:
+        load = float(load_csv_file.split("_")[-1].split(".csv")[0])
+        
+        df_load = pd.read_csv(load_csv_file)
+        steps = df_load["sample_steps"].unique()
+        
+        maes_per_load = [mae_estimator.estimate(step) for step in steps]
+        maes.append(np.mean(maes_per_load))
+        load_levels.append(load)
+        
+    load_levels, maes = zip(*sorted(zip(load_levels, maes)))
+
+    # plot
+    plt.plot(load_levels, maes, "-o")
+    plt.xlabel("Load Levels")
+    plt.ylabel("Estimated MAE")
+    plt.title("Estimated MAE vs Load Levels")
     plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=300)
+    plt.show()
 
-    out_path = os.path.join(output_folder, f"{base_name}_waiting_time_percentiles.png")
-    plt.savefig(out_path, dpi=300, bbox_inches="tight")
-    plt.close()
-    print(f"[OK] Saved: {out_path}")
+    
+def plot_response_time_per_load(load_csv_files, output_path="response_time_per_load.png"):
+    """
+    Plot Response Time vs Load Levels from given CSV files.
+    """
+    plt.figure(figsize=(9, 5))
+
+    load_levels = []
+    response_times = []
+
+    for load_csv_file in load_csv_files:
+        load = float(load_csv_file.split("_")[-1].split(".csv")[0])
+        load_levels.append(load)
+
+        df = pd.read_csv(load_csv_file)
+        response_time_per_load = df["response_time"].mean()
+        response_times.append(response_time_per_load)
+
+    load_levels, response_times = zip(*sorted(zip(load_levels, response_times)))
+
+    plt.plot(load_levels, response_times, "--s")
+    plt.xlabel("Load Levels")
+    plt.ylabel("Estimated Response Time")
+    plt.title("Estimated Response Time vs Load Levels")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=300)
+    plt.show()

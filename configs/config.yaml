@@ -12,3 +12,15 @@ model:
 sample:
   rdb: 'general'
   rdb_crit: dummy
+  schedule: 'RR' # We can use FCFS or RR
+  quantum: 1
+  retry_invalid_graphs: true
+  # NEW: dynamic sampling parameters
+  S_min: 25  # minimum sampling steps - saturated queue
+  S_max: 70  # maximum sampling steps - free queue
+  Q_free: 0   # queue length for free system
+  Q_sat: 45  # queue length for saturated system
+  dynamic_steps: true # enable dynamic sampling steps based on queue length
+  optimized_model: true # enable optimized model for hyoerparameter selection
+  run_last_jobs: true # whether to run the last jobs in the queue when using optimized model
+  
