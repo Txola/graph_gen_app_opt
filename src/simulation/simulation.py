@@ -14,6 +14,7 @@ from flow_matching.sampler import load_transformer_model
 from metrics.molecular_metrics import Evaluator
 from lookup_table import LookupTable
 
+CONT = 0
 
 class Server:
     def __init__(self, df, cfg, n_workers=1):
@@ -173,7 +174,8 @@ class Server:
         # if finished, check validity if requested
         if sampler is not None and sampler.finished:
             if self.retry_invalid_graphs:
-                if not self._check_valid_graph(sampler):
+                samples, _ = sampler.finalize()
+                if not self._check_valid_graph(samples):
                     # mark unfinished so worker will requeue (subject to max_retries)
                     retry_count += 1
                     task_descriptor["retry_count"] = retry_count
@@ -185,7 +187,7 @@ class Server:
             "service_start": service_start,
             "service_end": service_end,
             "service_duration": service_end - service_start,
-            "finished": bool(sampler.finished) if sampler is not None else True,
+            "finished": sampler.finished,
             "retry_count": retry_count,
             "sample_steps": task_descriptor["sample_steps"],
         }
@@ -203,9 +205,9 @@ class Server:
             queue_.put(task)
             arrivals[i] = task["arrival_time"]
 
-        # enqueue one sentinel per worker so workers know when to stop
-        for _ in range(self.n_workers):
-            queue_.put({"__stop__": True})
+        # # enqueue one sentinel per worker so workers know when to stop
+        # for _ in range(self.n_workers):
+        #     queue_.put({"__stop__": True})
 
         print("Done submitting")
         return arrivals
@@ -217,8 +219,11 @@ class Server:
         while True:
             task = queue_.get()  # blocking get
             
+            print(f"{task}")
+            
             # if sentinel -> mark task done and break
-            if isinstance(task, dict) and (task.get("__stop__") or task.get("last_job", False) and not self.run_last_jobs):
+            # if isinstance(task, dict) and task.get("__stop__") and not self.run_last_jobs: #or task.get("last_job", False):
+            if (task.get("last_job", False) and not self.run_last_jobs):
                 results.append({
                     "arrival_time": task.get("arrival_time"),
                     "service_start": None,
@@ -235,6 +240,27 @@ class Server:
                 })
                 queue_.task_done()
                 break
+            
+            # if isinstance(task, dict) and task.get("__stop__"):
+            #     queue_.task_done()
+            #     break
+            # if task.get("last_job", False) and not self.run_last_jobs:
+            #     results.append({
+            #         "arrival_time": task.get("arrival_time"),
+            #         "service_start": None,
+            #         "service_end": None,
+            #         "service_duration": None,
+            #         "sample_steps": task.get("sample_steps"),
+            #         "condition_value": task.get("condition_value"),
+            #         "num_in_queue": task.get("num_in_queue_at_start", None),
+            #         "retry_count": task.get("retry_count", 0),
+            #         "eta": task.get("eta", None),
+            #         "omega": task.get("omega", None),
+            #         "distortion": task.get("distortion", None),
+            #         "error": "not_executed"
+            #     })
+            #     queue_.task_done()
+            #     continue
             
 
             # if last job enqueued, mark as not executed and continue
@@ -298,11 +324,13 @@ class Server:
                         eta=eta, omega=omega,
                         distortion=distortion
                     )
+                    # print(task)
                     sampler.initialize(
                         batch_size=1,
                         sample_steps=int(task["sample_steps"]),
                         condition_value=task["condition_value"]
                     )
+                    # print("bien")
                 else:
                     sampler = None
                 task["sampler"] = sampler
@@ -345,6 +373,11 @@ class Server:
                     "distortion": task.get("distortion"),
                 })
                 self.progress.update(1)
+                
+                if task.get("last_job", False):
+                    print("final")
+                    break
+                
                 queue_.task_done()
             else:
                 # Not finished (RR partial or invalid graph). Requeue if under max_retries.
@@ -385,7 +418,7 @@ class Server:
             future_workers = [executor.submit(self.worker, i) for i in range(self.n_workers)]
 
             # wait for submitter to finish (it enqueues sentinels)
-            arrivals = future_submitter.result()[0]
+            arrivals = future_submitter.result()
             print("Submitter finished; sentinels enqueued.")
             print(f"Arrivals: {arrivals}")
 
