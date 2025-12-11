@@ -155,6 +155,9 @@ class Server:
         # RR expects a sampler already initialized in the task_descriptor
         if task_descriptor["service_start"] is None:
             task_descriptor["service_start"] = time.time() - self.start_time
+            task_descriptor["service_duration"] = 0.0 
+
+        quantum_start = time.time() - self.start_time
 
         service_start = task_descriptor["service_start"]
         sampler = task_descriptor["sampler"]
@@ -170,6 +173,9 @@ class Server:
             if sampler.finished:
                 break
             sampler.step()
+            
+        quantum_end = time.time() - self.start_time
+        task_descriptor["service_duration"] += (quantum_end - quantum_start)
 
         # if finished, check validity if requested
         if sampler is not None and sampler.finished:
@@ -178,17 +184,48 @@ class Server:
                 if not self._check_valid_graph(samples):
                     # mark unfinished so worker will requeue (subject to max_retries)
                     retry_count += 1
-                    task_descriptor["retry_count"] = retry_count
-                    sampler.finished = False
+                    # task_descriptor["retry_count"] = retry_count
+                    
+                    print("not_valid")
+                    
+                    new_sampler = QM9CondSampler(
+                        self.cfg,
+                        qm9_dataset_infos=self.qm9_infos,
+                        extra_features=self.extra_features,
+                        domain_features=self.domain_features,
+                        model=self.model,
+                        evaluator=self.evaluator,
+                        eta=task_descriptor["eta"],
+                        omega=task_descriptor["omega"],
+                        distortion=task_descriptor["distortion"]
+                    )
 
-        service_end = time.time() - self.start_time
+                    new_sampler.initialize(
+                        batch_size=1,
+                        sample_steps=int(task_descriptor["sample_steps"]),
+                        condition_value=task_descriptor["condition_value"]
+                    )
+
+                    task_descriptor["sampler"] = new_sampler
+                    
+                    sampler.finished = False
+        task_descriptor["retry_count"] = retry_count
+        if sampler.finished:
+            return {
+                "service_start": task_descriptor["service_start"],
+                "service_end": quantum_end,
+                "service_duration": task_descriptor["service_duration"],
+                "finished": True,
+                "retry_count": task_descriptor["retry_count"],
+                "sample_steps": task_descriptor["sample_steps"],
+            }
 
         return {
-            "service_start": service_start,
-            "service_end": service_end,
-            "service_duration": service_end - service_start,
-            "finished": sampler.finished,
-            "retry_count": retry_count,
+            "service_start": task_descriptor["service_start"],
+            "service_end": None,
+            "service_duration": task_descriptor["service_duration"],
+            "finished": False,
+            "retry_count": task_descriptor["retry_count"],
             "sample_steps": task_descriptor["sample_steps"],
         }
 
@@ -219,7 +256,7 @@ class Server:
         while True:
             task = queue_.get()  # blocking get
             
-            print(f"{task}")
+            # print(f"{task}")
             
             # if sentinel -> mark task done and break
             # if isinstance(task, dict) and task.get("__stop__") and not self.run_last_jobs: #or task.get("last_job", False):
@@ -376,6 +413,7 @@ class Server:
                 
                 if task.get("last_job", False):
                     print("final")
+                    queue_.task_done()
                     break
                 
                 queue_.task_done()
