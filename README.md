@@ -3,6 +3,7 @@
 ## Introduction
 This repository contains the code for a molecular graph generation service based on the **DeFoG (Discrete Flow Matching for Graphs)** framework, available at:  
 https://github.com/manuelmlmadeira/DeFoG
+
 The goal of the project is to generate **chemically valid molecular graphs conditioned on a target energy value**, while studying the impact of different sampling strategies, hyperparameter configurations, and scheduling policies.
 
 In addition to molecule generation, this repository includes a **simulation framework** that evaluates system-level performance under different workloads by executing the actual generative model. This enables realistic measurements of service time, waiting time, and response time under controlled conditions.
@@ -18,8 +19,10 @@ The repository is organized as follows:
 ├── src/
 ├── environment.yaml 
 ```
+
 ### `src/`
 This directory contains all executable scripts used during the project to run the experiments, and that are necessary to execute to replicate the results (`sample.py`, `run_simulation.py`, `run_all_experiments.py`, `run_mae_analysis.py`).
+
 ---
 
 ## Environment Setup
