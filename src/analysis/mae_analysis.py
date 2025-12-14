@@ -22,10 +22,9 @@ def run_early_exit_batch(
     ).tolist()
 
     maes, valids = [], []
-    cnts = 0
 
     for cond in cond_values:
-        mae, validity, len_valid = run_experiment(
+        mae, validity = run_experiment(
             cfg=cfg,
             sample_steps=num_steps,
             batch_size=1,  # early exit needs batch=1
@@ -40,12 +39,11 @@ def run_early_exit_batch(
             maes.append(mae)
         if validity is not None:
             valids.append(validity)
-        cnts += len_valid if len_valid is not None else 0
 
     mean_mae = float(np.mean(maes)) if compute_mae else None
     mean_valid = float(np.mean(valids)) if valids else None
 
-    return mean_mae, mean_valid, cnts
+    return mean_mae, mean_valid
 
 
 def run_steps_experiment(
@@ -82,7 +80,7 @@ def run_steps_experiment(
             start_time = time.time()
 
             if not early_exit:
-                mae_no_exit, val_no_exit, len_valids = run_experiment(
+                mae_no_exit, val_no_exit = run_experiment(
                     cfg,
                     steps,
                     batch_size,
@@ -100,18 +98,16 @@ def run_steps_experiment(
                         "steps": steps,
                         "mae_no_exit": mae_no_exit,
                         "validity_no_exit": val_no_exit,
-                        "num_valids_no_exit": len_valids,
                         "execution_time_sec": duration / batch_size,
                     }
                 )
 
             else:
-                mae_exit, val_exit, cnt_exit = run_early_exit_batch(
+                mae_exit, val_exit = run_early_exit_batch(
                     cfg=cfg,
                     num_steps=steps,
                     batch_size=batch_size,
                     condition_interval=condition,
-                    early_exit=True,
                     early_exit_start_step=None,
                     compute_mae=compute_mae,
                     ensure_validity=ensure_validity,
@@ -125,7 +121,6 @@ def run_steps_experiment(
                         "steps": steps,
                         "mae_early_exit": mae_exit,
                         "validity_early_exit": val_exit,
-                        "num_valids_early_exit": cnt_exit,
                         "execution_time_sec": duration / batch_size,
                     }
                 )
@@ -165,12 +160,11 @@ def run_early_exit_start_step_experiment(
 
             start_time = time.time()
 
-            mae_exit, val_exit, cnt_exit = run_early_exit_batch(
+            mae_exit, val_exit = run_early_exit_batch(
                 cfg=cfg,
                 num_steps=num_steps,
                 batch_size=batch_size,
                 condition_interval=condition,
-                early_exit=True,
                 early_exit_start_step=start_step,
                 compute_mae=compute_mae,
                 ensure_validity=ensure_validity,
@@ -184,7 +178,6 @@ def run_early_exit_start_step_experiment(
                     "early_exit_start_step": start_step,
                     "mae_early_exit": mae_exit,
                     "validity_early_exit": val_exit,
-                    "num_valids_early_exit": cnt_exit,
                     "execution_time_sec": duration / batch_size,
                 }
             )
@@ -223,7 +216,7 @@ def run_repeated_sampling_experiment(
 
         start_time = time.time()
 
-        mae, validity, len_valids = run_experiment(
+        mae, validity = run_experiment(
             cfg=cfg,
             sample_steps=sample_steps,
             batch_size=1,
@@ -244,7 +237,6 @@ def run_repeated_sampling_experiment(
                 "execution_time_sec": duration,
                 "mae": mae,
                 "validity": validity,
-                "num_valids": len_valids,
             }
         )
 
