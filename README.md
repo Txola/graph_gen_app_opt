@@ -10,21 +10,6 @@ In addition to molecule generation, this repository includes a **simulation fram
 
 All experiments, simulations, and analyses presented in the accompanying report can be reproduced using the scripts provided here.
 
----
-
-## Repository Structure
-The repository is organized as follows:
-```
-├── plots/ # Contain all the generated plots
-├── src/
-├── environment.yaml
-```
-
-### `src/`
-This directory contains all executable scripts used during the project to run the experiments, and that are necessary to execute to replicate the results (`sample.py`, `run_simulation.py`, `run_all_experiments.py`, `run_mae_analysis.py`).
-
----
-
 ## Environment Setup
 
 ### 1. Install Miniconda
