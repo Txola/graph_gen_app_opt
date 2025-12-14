@@ -9,7 +9,7 @@ from models.extra_features import ExtraMolecularFeatures
 from omegaconf import DictConfig
 
 
-def build_sampler(cfg: DictConfig, sample_steps: int):
+def build_sampler(cfg: DictConfig, sample_steps: int, params: dict = None):
     """Builds model + sampler, optionally using hyperparameter lookup table."""
 
     qm9_infos = QM9Infos()
@@ -26,7 +26,11 @@ def build_sampler(cfg: DictConfig, sample_steps: int):
     domain_features = ExtraMolecularFeatures(dataset_infos=qm9_infos)
     evaluator = Evaluator()
 
-    if cfg.experiment.use_lookup:
+    if params is not None:
+        eta = params.get("eta")
+        omega = params.get("omega")
+        distortion = params.get("distortion")
+    elif cfg.experiment.use_lookup:
         lookup = LookupTable()
         params = lookup.get_best_params(sample_steps)
 
@@ -62,10 +66,11 @@ def run_experiment(
     early_exit_start_step: int = None,
     compute_mae: bool = True,
     ensure_validity: bool = False,
+    params: dict = None,
 ):
     """Run a sampling experiment with optional evaluation and validity enforcement."""
 
-    sampler, evaluator = build_sampler(cfg, sample_steps)
+    sampler, evaluator = build_sampler(cfg, sample_steps, params)
 
     while True:
         samples, labels = sampler.sample(
@@ -83,10 +88,8 @@ def run_experiment(
         break
 
     if compute_mae:
-        mae, len_valids = evaluator.cond_sample_metric(
-            samples, labels, num_eval=batch_size
-        )
+        mae = evaluator.cond_sample_metric(samples, labels, num_eval=batch_size)
     else:
-        mae, len_valids = None, None
+        mae = None
 
-    return mae, validity, len_valids
+    return mae, validity
