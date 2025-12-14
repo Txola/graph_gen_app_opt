@@ -10,10 +10,17 @@ model:
   rrwp_steps: 12
   checkpoint_path: '../checkpoints/qm9_with_h_conditional.pt'
 sample:
+  eta: 0
+  omega: 1
+  sample_steps: 70
+  condition_value: -400
+
   rdb: 'general'
   rdb_crit: dummy
+
+
   schedule: 'RR' # We can use FCFS or RR
-  quantum: 1
+  quantum: 30
   retry_invalid_graphs: true
   # NEW: dynamic sampling parameters
   S_min: 25  # minimum sampling steps - saturated queue
@@ -23,4 +30,3 @@ sample:
   dynamic_steps: true # enable dynamic sampling steps based on queue length
   optimized_model: true # enable optimized model for hyoerparameter selection
   run_last_jobs: true # whether to run the last jobs in the queue when using optimized model
-  

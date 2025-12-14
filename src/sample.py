@@ -36,29 +36,28 @@ def main(cfg: DictConfig):
         domain_features=domain_features,
         model=model,
         evaluator=evaluator,
-        eta=0,
-        omega=1,
+        eta=cfg.sample.eta,
+        omega=cfg.sample.omega,
         distortion="polydec",
     )
     print("Sampling...")
     start = time.time()
     samples, labels = sampler.sample(
-        batch_size=50,
-        sample_steps=100,
-        condition_value=-400,
+        batch_size=1,
+        sample_steps=cfg.sample.sample_steps,
+        condition_value=cfg.sample.condition_value,
     )
     end = time.time()
     print(f"Sampling took {end - start:.4f} seconds.")
 
     start = time.time()
-    print(evaluator.compute_validity(samples))
+    validity = evaluator.compute_validity(samples)
     end = time.time()
     print(f"Validity computation took {end - start:.4f} seconds.")
-    start = time.time()
-    mae = evaluator.cond_sample_metric(samples, labels, 32)
-    end = time.time()
-    print(mae)
-    print(f"Conditional property computation took {end - start:.4f} seconds.")
+    if validity == 1.0:
+        print("The graph is valid")
+    else:
+        print("The graph is not valid")
 
 
 if __name__ == "__main__":
