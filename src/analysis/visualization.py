@@ -1,5 +1,6 @@
 import os
 import re
+from pathlib import Path
 from typing import List
 from typing import Optional
 
@@ -24,6 +25,14 @@ def load_csv(csv_path):
     for col in df.columns:
         df[col] = df[col].apply(clean_tensor)
     return df
+
+
+def load_per_load_csvs(folder: str, suffix=".csv"):
+    """Return sorted list of CSV files in folder."""
+    folder_path = Path(folder)
+    files = [f for f in folder_path.glob(f"*{suffix}")]
+    files = sorted(files, key=lambda f: float(f.stem.split("_")[-1]))
+    return files
 
 
 def bootstrap_ci(values, n_samples=2000, low=5, high=95):
@@ -65,16 +74,25 @@ def plot_curve_with_band(x, mean, low, high, label):
     plt.fill_between(x, low, high, alpha=0.2)
 
 
-def plot_histogram(data, title, xlabel, bins=30):
-    """Simple histogram."""
+def plot_histogram(
+    data, title, xlabel, bins=60, hist_color="skyblue", kde_color="darkred"
+):
     plt.figure(figsize=(8, 4))
-    plt.hist(data, bins=bins, alpha=0.7)
+
+    _, bin_edges, _ = plt.hist(
+        data, bins=bins, alpha=1, density=True, color=hist_color, label="Histogram"
+    )
+
+    xmin, xmax = bin_edges[0], bin_edges[-1]
+
+    sns.kdeplot(data, clip=(xmin, xmax), color=kde_color, lw=2, label="KDE", alpha=0.4)
+    plt.xlim(xmin, xmax)
     plt.title(title)
     plt.xlabel(xlabel)
-    plt.ylabel("Count")
+    plt.ylabel("Density")
     plt.grid(True)
+    plt.legend()
     plt.tight_layout()
-    plt.show()
 
 
 def plot_mae_curves(
@@ -83,6 +101,7 @@ def plot_mae_curves(
     steps_col="steps",
     mae_col="mae",
     title="MAE vs Steps",
+    save_path="mae_comp.pdf",
 ):
     """MAE vs Steps for multiple CSV files."""
 
@@ -102,6 +121,7 @@ def plot_mae_curves(
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
+    plt.savefig(save_path)
     plt.show()
 
 
@@ -111,6 +131,7 @@ def plot_validity_curves(
     steps_col="steps",
     val_col="validity",
     title="Validity vs Steps",
+    save_path="validity_comp.pdf",
 ):
     """Validity vs Steps."""
 
@@ -131,6 +152,7 @@ def plot_validity_curves(
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
+    plt.savefig(save_path)
     plt.show()
 
 
@@ -140,6 +162,7 @@ def plot_time_curves(
     steps_col="steps",
     time_col="execution_time_sec",
     title="Execution Time vs Steps",
+    save_path="time_comp.pdf",
 ):
     """Execution time vs Steps."""
 
@@ -159,6 +182,7 @@ def plot_time_curves(
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
+    plt.savefig(save_path)
     plt.show()
 
 
@@ -168,9 +192,11 @@ def plot_early_exit_steps(
     steps_col="steps",
     mae_col="mae",
     title="MAE with Early Exit vs Steps",
+    save_path="early_steps.pdf",
 ):
     """Plot MAE vs steps for early-exit experiments."""
     plot_mae_curves(csv_files, labels, steps_col, mae_col, title)
+    plt.savefig(save_path)
 
 
 def plot_early_exit_starts(
@@ -179,6 +205,7 @@ def plot_early_exit_starts(
     start_col="early_exit_start_step",
     mae_col="mae",
     title="MAE vs Early Exit Start Step",
+    save_path="early_starts.pdf",
 ):
     """MAE vs where early exit begins."""
 
@@ -198,17 +225,8 @@ def plot_early_exit_starts(
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
+    plt.savefig(save_path)
     plt.show()
-
-
-def plot_early_exit_timing(
-    csv_files: List[str],
-    labels: Optional[List[str]] = None,
-    steps_col="steps",
-    time_col="execution_time_sec",
-    title="Execution Time with Early Exit vs Steps",
-):
-    plot_time_curves(csv_files, labels, steps_col, time_col, title)
 
 
 def plot_time_histogram_for_step(
@@ -217,6 +235,7 @@ def plot_time_histogram_for_step(
     steps_col="steps",
     time_col="execution_time_sec",
     bins=30,
+    save_path="times.pdf",
 ):
     """Histogram of timing for repeated sampling at a given step."""
 
@@ -225,160 +244,173 @@ def plot_time_histogram_for_step(
 
     title = f"Execution Time Distribution (Step={step})"
     plot_histogram(subset, title, xlabel="Execution Time (sec)", bins=bins)
+    plt.savefig(save_path)
+    plt.show()
 
 
-def plots_simulation(
-    csv_path="../../outputs_simulation/fcfs.csv",
-    output_folder="../../plots/",
+def plot_tradeoff_per_load(
+    load_csv_files, mae_csv_path, output_path="tradeoff_per_load.png", use_lambda=True
 ):
-    os.makedirs(output_folder, exist_ok=True)
-
-    df = pd.read_csv(csv_path)
-
-    base_name = os.path.splitext(os.path.basename(csv_path))[0]
-
-    if "response_time" not in df.columns:
-        df["response_time"] = df["service_end"] - df["arrival_time"]
-
-    # Compute statistics
-    mean_waiting_time = df["waiting_time"].mean()
-    mean_service_duration = df["service_duration"].mean()
-    mean_response_time = df["response_time"].mean()
-    total_customers = len(df)
-
-    # server utilization
-    total_simulation_time = df["service_end"].max() - df["arrival_time"].min()
-    total_service_time = df["service_duration"].sum()
-    server_utilization = total_service_time / total_simulation_time
-
-    print(f"\nSimulation Statistics ({base_name}):")
-    print(f"  Total Customers Served: {total_customers}")
-    print(f"  Mean Waiting Time: {mean_waiting_time:.4f}")
-    print(f"  Mean Service Duration: {mean_service_duration:.4f}")
-    print(f"  Mean Response Time: {mean_response_time:.4f}")
-    print(f"  Server Utilization: {server_utilization:.4f}")
-
-    # Waiting Time
-    plt.figure(figsize=(8, 5))
-    sns.histplot(df["waiting_time"], bins=20, kde=True, color="skyblue")
-    plt.title(f"Waiting Time Distribution ({base_name})")
-    plt.xlabel("Waiting Time")
-    plt.ylabel("Frequency")
-    plt.grid(True)
-
-    out_path = os.path.join(output_folder, f"{base_name}_waiting_time_hist.png")
-    plt.savefig(out_path, dpi=300, bbox_inches="tight")
-    plt.close()
-    print(f"[OK] Saved: {out_path}")
-
-    # Service Duration
-    plt.figure(figsize=(8, 5))
-
-    sns.histplot(df["service_duration"], bins=20, kde=True, color="salmon")
-    plt.title(f"Service Duration Distribution ({base_name})")
-    plt.xlabel("Service Duration")
-    plt.ylabel("Frequency")
-    plt.grid(True)
-
-    out_path = os.path.join(output_folder, f"{base_name}_service_duration_hist.png")
-    plt.savefig(out_path, dpi=300, bbox_inches="tight")
-    plt.close()
-    print(f"[OK] Saved: {out_path}")
-
-    # Response Time
-    plt.figure(figsize=(8, 5))
-    sns.histplot(df["response_time"], bins=20, kde=True, color="lightgreen")
-    plt.title(f"Response Time Distribution ({base_name})")
-    plt.xlabel("Response Time")
-    plt.ylabel("Frequency")
-    plt.grid(True)
-    out_path = os.path.join(output_folder, f"{base_name}_response_time_hist.png")
-    plt.savefig(out_path, dpi=300, bbox_inches="tight")
-    plt.close()
-    print(f"[OK] Saved: {out_path}")
-
-    # # Percentile Curve
-    # df_sorted = df.sort_values("waiting_time")
-    # df_sorted["p"] = df_sorted.index / len(df_sorted)
-
-    # plt.figure(figsize=(8, 5))
-    # plt.plot(df_sorted["p"], df_sorted["waiting_time"])
-    # plt.title(f"Waiting Time Percentile Curve ({base_name})")
-    # plt.xlabel("Percentile")
-    # plt.ylabel("Waiting Time")
-    # plt.grid(True)
-
-    # out_path = os.path.join(output_folder, f"{base_name}_waiting_time_percentiles.png")
-    # plt.savefig(out_path, dpi=300, bbox_inches="tight")
-    # plt.close()
-    # print(f"[OK] Saved: {out_path}")
-
-
-def plot_mae_per_load(
-    load_csv_files, output_path="mae_per_load.png", optimized_model=False
-):
-    """Plot MAE vs Load Levels from given CSV files."""
-    plt.figure(figsize=(9, 5))
-
+    """
+    Plot Estimated MAE and Average Response Time vs Load (or λ) on the same plot.
+    Consistent style with visualization.py.
+    """
     load_levels = []
     maes = []
+    response_times = []
 
-    mae_csv_path = (
-        "../../src/csvs/mae_estimates_opt.csv"
-        if optimized_model
-        else "../../src/csvs/mae_estimates.csv"
-    )
     mae_estimator = MAEEstimator(mae_csv_path)
 
     for load_csv_file in load_csv_files:
-        load = float(load_csv_file.split("_")[-1].split(".csv")[0])
+        load_val = float(
+            os.path.basename(load_csv_file).split("_")[-1].split(".csv")[0]
+        )
+        x_val = 1 / load_val if use_lambda else load_val
+        load_levels.append(x_val)
 
-        df_load = pd.read_csv(load_csv_file)
-        steps = df_load["sample_steps"].unique()
-
+        df = pd.read_csv(load_csv_file)
+        steps = df["sample_steps"].unique()
         maes_per_load = [mae_estimator.estimate(step) for step in steps]
         maes.append(np.mean(maes_per_load))
-        load_levels.append(load)
 
-    load_levels, maes = zip(*sorted(zip(load_levels, maes)))
+        response_times.append(df["response_time"].mean())
 
-    # plot
-    plt.plot(load_levels, maes, "-o")
-    plt.xlabel("Load Levels")
-    plt.ylabel("Estimated MAE")
-    plt.title("Estimated MAE vs Load Levels")
-    plt.grid(True)
-    plt.tight_layout()
+    load_levels, maes, response_times = zip(
+        *sorted(zip(load_levels, maes, response_times))
+    )
+
+    fig, ax1 = plt.subplots(figsize=(9, 5))
+
+    ax1.plot(load_levels, maes, "-o", color="tab:blue", label="Estimated MAE")
+    ax1.set_xlabel("Load (λ)" if use_lambda else "Load (1/λ)")
+    ax1.set_ylabel("Estimated MAE", color="tab:blue")
+    ax1.tick_params(axis="y", labelcolor="tab:blue")
+
+    ax2 = ax1.twinx()
+    ax2.plot(
+        load_levels, response_times, "-o", color="tab:orange", label="Response Time"
+    )
+    ax2.set_ylabel("Average Response Time (sec)", color="tab:orange")
+    ax2.tick_params(axis="y", labelcolor="tab:orange")
+
+    lines_1, labels_1 = ax1.get_legend_handles_labels()
+    lines_2, labels_2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines_1 + lines_2, labels_1 + labels_2, loc="upper left")
+
+    plt.title("Estimated MAE and Response Time vs Load")
+    ax1.grid(True)
+    fig.tight_layout()
     plt.savefig(output_path, dpi=300)
     plt.show()
 
 
-def plot_response_time_per_load(
-    load_csv_files, output_path="response_time_per_load.png"
+def plot_tradeoff_per_Qsat(
+    load_csv_files, mae_csv_path, output_path="tradeoff_per_Qsat.png"
 ):
     """
-    Plot Response Time vs Load Levels from given CSV files.
+    Plot Estimated MAE and Average Response Time vs Q_sat parameter for fixed load (λ=1).
+    Consistent style with visualization.py.
     """
-    plt.figure(figsize=(9, 5))
-
-    load_levels = []
+    Q_sats = []
+    maes = []
     response_times = []
 
+    mae_estimator = MAEEstimator(mae_csv_path)
+
     for load_csv_file in load_csv_files:
-        load = float(load_csv_file.split("_")[-1].split(".csv")[0])
-        load_levels.append(load)
+        Q_sat = float(os.path.basename(load_csv_file).split("_")[-1].split(".csv")[0])
+        Q_sats.append(Q_sat)
 
         df = pd.read_csv(load_csv_file)
-        response_time_per_load = df["response_time"].mean()
-        response_times.append(response_time_per_load)
+        steps = df["sample_steps"].unique()
+        maes_per_load = [mae_estimator.estimate(step) for step in steps]
+        maes.append(np.mean(maes_per_load))
 
-    load_levels, response_times = zip(*sorted(zip(load_levels, response_times)))
+        response_times.append(df["response_time"].mean())
 
-    plt.plot(load_levels, response_times, "--s")
-    plt.xlabel("Load Levels")
-    plt.ylabel("Estimated Response Time")
-    plt.title("Estimated Response Time vs Load Levels")
-    plt.grid(True)
-    plt.tight_layout()
+    Q_sats, maes, response_times = zip(*sorted(zip(Q_sats, maes, response_times)))
+
+    fig, ax1 = plt.subplots(figsize=(9, 5))
+
+    ax1.plot(Q_sats, maes, "-o", color="tab:blue", label="Estimated MAE")
+    ax1.set_xlabel("Q_sat")
+    ax1.set_ylabel("Estimated MAE", color="tab:blue")
+    ax1.tick_params(axis="y", labelcolor="tab:blue")
+    ax1.set_ylim(14.5, 15.5)
+
+    ax2 = ax1.twinx()
+    ax2.plot(Q_sats, response_times, "-o", color="tab:orange", label="Response Time")
+    ax2.set_ylabel("Average Response Time (sec)", color="tab:orange")
+    ax2.tick_params(axis="y", labelcolor="tab:orange")
+
+    lines_1, labels_1 = ax1.get_legend_handles_labels()
+    lines_2, labels_2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines_1 + lines_2, labels_1 + labels_2, loc="upper left")
+
+    plt.title("Estimated MAE and Response Time vs Q_sat (λ=1)")
+    ax1.grid(True)
+    fig.tight_layout()
+    plt.savefig(output_path, dpi=300)
+    plt.show()
+
+
+def plot_queue_and_steps_per_Qsat(
+    load_csv_file,
+    output_path="queue_steps_per_Qsat.png",
+    queue_col="queue_length",
+    steps_col="sample_steps",
+):
+    """
+    Plot queue length and assigned sampling steps per job
+    for a fixed Q_sat value.
+
+    Style consistent with visualization.py tradeoff plots.
+    """
+
+    Q_sat = float(os.path.basename(load_csv_file).split("_")[-1].split(".csv")[0])
+
+    df = pd.read_csv(load_csv_file)
+
+    job_idx = np.arange(len(df))
+    queue_lengths = df[queue_col].values
+    assigned_steps = df[steps_col].values
+
+    fig, ax1 = plt.subplots(figsize=(9, 5))
+
+    ax1.plot(
+        job_idx,
+        queue_lengths,
+        color="tab:blue",
+        markersize=3,
+        label="Queue Length",
+    )
+    ax1.set_xlabel("Job Index")
+    ax1.set_ylabel("Queue Length", color="tab:blue")
+    ax1.tick_params(axis="y", labelcolor="tab:blue")
+
+    ax2 = ax1.twinx()
+    ax2.plot(
+        job_idx,
+        assigned_steps,
+        color="tab:orange",
+        markersize=3,
+        label="Assigned Steps",
+    )
+    ax2.set_ylabel("Assigned Sampling Steps", color="tab:orange")
+    ax2.tick_params(axis="y", labelcolor="tab:orange")
+
+    lines_1, labels_1 = ax1.get_legend_handles_labels()
+    lines_2, labels_2 = ax2.get_legend_handles_labels()
+    ax1.legend(
+        lines_1 + lines_2,
+        labels_1 + labels_2,
+        loc="upper right",
+    )
+    ax1.set_xlim(0, 800)
+    ax2.set_xlim(0, 800)
+
+    plt.title(f"Queue Length and Assigned Steps per Job (Q_sat={Q_sat})")
+    ax1.grid(True)
+    fig.tight_layout()
     plt.savefig(output_path, dpi=300)
     plt.show()
