@@ -52,6 +52,12 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
+### 5. Download Model Checkpoint
+The pretrained model checkpoint can be downloaded
+[here](https://drive.google.com/file/d/1o7935tsQZSXpF_C05kXfvdTxA0KtsAdI/view?usp=sharing).
+After downloading, place the checkpoint file inside the `checkpoints/` directory at the repository root.
+
+
 ## Running the Code
 
 1. **Generate a Single Molecule**
