@@ -53,24 +53,12 @@ def main(cfg: DictConfig):
             batch_size=bs,
             condition=tuple(cfg.experiment.condition_interval),
             num_folds=cfg.experiment.num_folds,
-            early_exit=False,
+            early_exit=cfg.experiment.early_exit,
             output_path=os.path.join(out_dir, cfg.experiment.output_filename),
             compute_mae=False,
             ensure_validity=True,
         )
 
-        print("\n=== TIME COMPARISON: early exit ===")
-        _ = run_steps_experiment(
-            sample_steps_list=cfg.experiment.sample_steps_list,
-            cfg=cfg,
-            batch_size=bs,
-            condition=tuple(cfg.experiment.condition_interval),
-            num_folds=cfg.experiment.num_folds,
-            early_exit=True,
-            output_path=os.path.join(out_dir, cfg.experiment.output_filename),
-            compute_mae=False,
-            ensure_validity=True,
-        )
     elif mode == "repeated_time":
         _ = run_repeated_sampling_experiment(
             cfg=cfg,
