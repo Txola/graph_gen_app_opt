@@ -1,4 +1,4 @@
-fold,steps,mae_early_exit,validity_early_exit,execution_time_sec
+fold,steps,mae_no_exit,validity_early_exit,execution_time_sec
 1,10,44.53434371948242,0.6875,1.1655251514166594
 1,25,33.52250289916992,0.96875,2.2402732521295547
 1,40,34.37607955932617,0.984375,2.141307506710291
