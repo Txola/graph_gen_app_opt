@@ -171,7 +171,7 @@ class Evaluator:
             true_props.append(input_properties[i].reshape(1, -1))
 
         if len(true_props) == 0:
-            return -1.0
+            return None
 
         true_props = torch.cat(true_props, dim=0)
         pred = torch.FloatTensor(energies).unsqueeze(1)
